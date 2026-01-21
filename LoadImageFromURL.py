@@ -52,22 +52,6 @@ class LoadImageFromURL:
         
         return (img_tensor, mask)
 
-# ---------------------------
-# 扩展注册（ComfyUI必需）
-# ---------------------------
-class ImageURLExtension(ComfyExtension):
-    @override
-    async def get_node_list(self) -> list[type[io.ComfyNode]]:
-        return [LoadImageFromURL]
-
-# ---------------------------
-# 入口函数（ComfyUI扩展标准）
-# ---------------------------
-async def comfy_entrypoint() -> VideoURLExtension:
-    print("[LoadVideoFromURL] Extension loaded successfully!")
-    return LoadImageFromURL()
-
-
 # 节点映射（ComfyUI标准）
 NODE_CLASS_MAPPINGS = {
     "LoadImageFromURL": LoadImageFromURL
