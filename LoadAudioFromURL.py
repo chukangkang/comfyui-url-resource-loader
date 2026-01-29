@@ -3,28 +3,28 @@ import torch
 import requests
 import torchaudio
 from typing_extensions import override
-from comfy_api.latest import ComfyExtension, io  # ComfyUI的io模块
+from comfy_api.latest import ComfyExtension, io as ComfyIO  # ComfyUI的io模块
 import comfy.model_management
 
 # 仅支持URL加载的音频节点（修复命名冲突+适配阿里云OSS）
-class LoadAudioFromURL(io.ComfyNode):
+class LoadAudioFromURL(ComfyIO.ComfyNode):
     @classmethod
-    def define_schema(cls) -> io.Schema:
-        return io.Schema(
+    def define_schema(cls) -> ComfyIO.Schema:
+        return ComfyIO.Schema(
             node_id="LoadAudioFromURL",
             category="loaders",
             inputs=[
-                io.String.Input(
+                ComfyIO.String.Input(
                     "audio_url",
                     default="",
                     tooltip="音频文件的URL地址（支持MP3/WAV/FLAC等主流格式，输出将适配16000Hz采样率）"
                 ),
             ],
-            outputs=[io.Audio.Output()],
+            outputs=[ComfyIO.Audio.Output()],
         )
 
     @classmethod
-    def execute(cls, audio_url) -> io.NodeOutput:
+    def execute(cls, audio_url) -> ComfyIO.NodeOutput:
         # 校验URL非空
         if not audio_url or not audio_url.strip():
             raise ValueError("音频URL不能为空，请填写有效的音频文件地址")
@@ -57,7 +57,7 @@ class LoadAudioFromURL(io.ComfyNode):
             "waveform": waveform,
             "sample_rate": sample_rate
         }
-        return io.NodeOutput(audio_output)
+        return ComfyIO.NodeOutput(audio_output)
 
     @staticmethod
     def _load_audio_from_url(url: str) -> tuple[torch.Tensor, int]:
@@ -121,7 +121,7 @@ class LoadAudioFromURL(io.ComfyNode):
 # 扩展注册（仅注册LoadAudioFromURL节点）
 class AudioExtension(ComfyExtension):
     @override
-    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+    async def get_node_list(self) -> list[type[ComfyIO.ComfyNode]]:
         return [LoadAudioFromURL]
 
 # ComfyUI入口函数

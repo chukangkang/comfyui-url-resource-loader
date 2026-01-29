@@ -17,7 +17,7 @@ try:
     from typing import Optional
     from typing_extensions import override
     import folder_paths
-    from comfy_api.latest import ComfyExtension, io, Input, InputImpl, Types
+    from comfy_api.latest import ComfyExtension, io as ComfyIO, Input, InputImpl, Types
     import aiohttp
 except ImportError as e:
     print(f"[LoadVideoFromURL] Import error: {e}")
@@ -27,39 +27,39 @@ except ImportError as e:
 # ---------------------------
 # 从URL加载视频的核心节点（修复异步循环问题）
 # ---------------------------
-class LoadVideoFromURL(io.ComfyNode):
+class LoadVideoFromURL(ComfyIO.ComfyNode):
     @classmethod
     def define_schema(cls):
-        return io.Schema(
+        return ComfyIO.Schema(
             node_id="LoadVideoFromURL",
             display_name="Load Video From URL",
             category="image/video",
             description="Load a video from a remote URL (supports http/https)",
             inputs=[
-                io.String.Input(
+                ComfyIO.String.Input(
                     "video_url", 
                     default="", 
                     tooltip="URL of the video to load (e.g., https://example.com/video.mp4)\nSupported formats: mp4, webm, mov, avi, mkv, flv"
                 ),
-                io.Boolean.Input(
+                ComfyIO.Boolean.Input(
                     "save_to_input_folder", 
                     default=False, 
                     tooltip="Whether to save the downloaded video to ComfyUI input folder\nIf False, video will be saved as temporary file"
                 ),
-                io.String.Input(
+                ComfyIO.String.Input(
                     "filename", 
                     default="downloaded_video", 
                     tooltip="Filename for saved video (without extension)"
                 ),
             ],
             outputs=[
-                io.Video.Output(),
+                ComfyIO.Video.Output(),
             ],
         )
     
     # 关键修改：直接使用异步execute方法，而非同步包装
     @classmethod
-    async def execute(cls, video_url: str, save_to_input_folder: bool, filename: str) -> io.NodeOutput:
+    async def execute(cls, video_url: str, save_to_input_folder: bool, filename: str) -> ComfyIO.NodeOutput:
         """异步执行核心逻辑（直接兼容ComfyUI的异步执行环境）"""
         # 基础输入验证
         if not video_url:
@@ -135,7 +135,7 @@ class LoadVideoFromURL(io.ComfyNode):
                 
                 # 4. 创建Video对象并返回（与原生节点完全兼容）
                 video_object = InputImpl.VideoFromFile(video_path)
-                return io.NodeOutput(video_object)
+                return ComfyIO.NodeOutput(video_object)
                 
         except Exception as e:
             # 异常处理：清理临时文件
@@ -173,7 +173,7 @@ class LoadVideoFromURL(io.ComfyNode):
 # ---------------------------
 class VideoURLExtension(ComfyExtension):
     @override
-    async def get_node_list(self) -> list[type[io.ComfyNode]]:
+    async def get_node_list(self) -> list[type[ComfyIO.ComfyNode]]:
         return [LoadVideoFromURL]
 
 # ---------------------------

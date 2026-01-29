@@ -1,5 +1,5 @@
 from typing_extensions import override
-from comfy_api.latest import ComfyExtension, io
+from comfy_api.latest import ComfyExtension, io as ComfyIO
 import sys
 import os
 
@@ -15,6 +15,8 @@ from .LoadImageFromURL import LoadImageFromURL
 from .LoadVideoFromURL import LoadVideoFromURL  # 需确保该文件存在
 # 音频URL加载节点（LoadAudioFromURL）
 from .LoadAudioFromURL import LoadAudioFromURL  # 需确保该文件存在
+# OSS上传节点（OSS_Upload）
+from .oss_uploader import OSS_Upload  # 需确保该文件存在
 
 # ---------------------------
 # 传统节点映射（兼容旧版ComfyUI）
@@ -22,13 +24,15 @@ from .LoadAudioFromURL import LoadAudioFromURL  # 需确保该文件存在
 NODE_CLASS_MAPPINGS = {
     "LoadImageFromURL": LoadImageFromURL,
     "LoadVideoFromURL": LoadVideoFromURL,
-    "LoadAudioFromURL": LoadAudioFromURL
+    "LoadAudioFromURL": LoadAudioFromURL,
+    "OSS_Upload": OSS_Upload
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromURL": "Load Image From URL",
     "LoadVideoFromURL": "Load Video From URL",
-    "LoadAudioFromURL": "Load Audio From URL"
+    "LoadAudioFromURL": "Load Audio From URL",
+    "OSS_Upload": "🔌 OSS Upload"
 }
 
 # ---------------------------
@@ -36,19 +40,20 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # ---------------------------
 class URLLoaderExtension(ComfyExtension):
     @override
-    async def get_node_list(self) -> list[type[io.ComfyNode]]:
-        # 汇总所有URL加载节点
+    async def get_node_list(self) -> list[type[ComfyIO.ComfyNode]]:
+        # 汇总所有节点（URL加载 + OSS上传）
         return [
             LoadImageFromURL,
             LoadVideoFromURL,
-            LoadAudioFromURL
+            LoadAudioFromURL,
+            OSS_Upload
         ]
 
 # ---------------------------
 # ComfyUI扩展标准入口函数（唯一入口）
 # ---------------------------
 async def comfy_entrypoint() -> URLLoaderExtension:
-    print("[URLLoaderExtension] Image/Video/Audio URL Loader loaded successfully!")
+    print("[URLLoaderExtension] URL Loader + OSS Upload Extension loaded successfully!")
     return URLLoaderExtension()
 
 # ---------------------------
