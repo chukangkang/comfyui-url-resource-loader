@@ -27,11 +27,11 @@ except ImportError as e:
 # ---------------------------
 # 从URL加载视频的核心节点（修复异步循环问题）
 # ---------------------------
-class LoadVideoFromURL(io.ComfyNode):
+class ComfyVideoURLLoader(io.ComfyNode):
     @classmethod
     def define_schema(cls):
         return io.Schema(
-            node_id="LoadVideoFromURL",
+            node_id="ComfyVideoURLLoader",
             display_name="Load Video From URL",
             category="image/video",
             description="Load a video from a remote URL (supports http/https)",
@@ -168,28 +168,14 @@ class LoadVideoFromURL(io.ComfyNode):
         
         return True
 
-# ---------------------------
-# 扩展注册（ComfyUI必需）
-# ---------------------------
-class VideoURLExtension(ComfyExtension):
-    @override
-    async def get_node_list(self) -> list[type[io.ComfyNode]]:
-        return [LoadVideoFromURL]
-
-# ---------------------------
-# 入口函数（ComfyUI扩展标准）
-# ---------------------------
-async def comfy_entrypoint() -> VideoURLExtension:
-    print("[LoadVideoFromURL] Extension loaded successfully!")
-    return VideoURLExtension()
 
 # ---------------------------
 # 兼容ComfyUI旧版节点映射（确保节点能被识别）
 # ---------------------------
 NODE_CLASS_MAPPINGS = {
-    "LoadVideoFromURL": LoadVideoFromURL
+    "ComfyVideoURLLoader": ComfyVideoURLLoader
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadVideoFromURL": "🔌 Load Video From URL"
+    "ComfyVideoURLLoader": "🎥 Load Video From URL"
 }
