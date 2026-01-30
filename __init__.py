@@ -6,11 +6,18 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # ---------------------------
 # 导入各URL加载节点类（需确保对应py文件存在）
+# 兼容：包内相对导入 / 直接运行时绝对导入
 # ---------------------------
-from .LoadImageFromURL import LoadImageFromURL
-from .LoadVideoFromURL import LoadVideoFromURL
-from .LoadAudioFromURL import LoadAudioFromURL
-from .oss_uploader import OSS_Upload
+try:
+    from .LoadImageFromURL import LoadImageFromURL
+    from .LoadVideoFromURL import LoadVideoFromURL
+    from .LoadAudioFromURL import LoadAudioFromURL
+    from .oss_uploader import OSS_Upload
+except ImportError:
+    from LoadImageFromURL import LoadImageFromURL
+    from LoadVideoFromURL import LoadVideoFromURL
+    from LoadAudioFromURL import LoadAudioFromURL
+    from oss_uploader import OSS_Upload
 
 # ---------------------------
 # 统一节点映射（兼容传统ComfyUI格式）
