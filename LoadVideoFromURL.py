@@ -49,7 +49,7 @@ class LoadVideoFromURL:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("video_path",)
     FUNCTION = "load_video"
-    CATEGORY = "loaders"
+    CATEGORY = "video"
     OUTPUT_NODE = False
 
     def load_video(self, video_url: str, save_to_input_folder: bool, filename: str):
