@@ -30,9 +30,9 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadImageFromURL": "Load Image From URL",
-    "LoadVideoFromURL": "Load Video From URL",
-    "LoadAudioFromURL": "Load Audio From URL",
+    "LoadImageFromURL": "🔌 Load Image From URL",
+    "LoadVideoFromURL": "🔌 Load Video From URL",
+    "LoadAudioFromURL": "🔌 Load Audio From URL",
     "OSS_Upload": "🔌 OSS Upload"
 }
 
