@@ -46,8 +46,8 @@ class LoadVideoFromURL:
             }
         }
     
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("video_path",)
+    RETURN_TYPES = ("VIDEO",)
+    RETURN_NAMES = ("video",)
     FUNCTION = "load_video"
     CATEGORY = "video"
     OUTPUT_NODE = False
