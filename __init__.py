@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # 图片URL加载节点（LoadImageFromURL）
 from .LoadImageFromURL import LoadImageFromURL
 # 视频URL加载节点（LoadVideoFromURL）
-from .LoadVideoFromURL import LoadVideoFromURL  # 需确保该文件存在
+from .LoadVideoFromURL import ComfyVideoURLLoader  # 需确保该文件存在
 # 音频URL加载节点（LoadAudioFromURL）
 from .LoadAudioFromURL import LoadAudioFromURL  # 需确保该文件存在
 # OSS上传节点（OSS_Upload）
@@ -23,14 +23,14 @@ from .oss_uploader import OSS_Upload
 # ---------------------------
 NODE_CLASS_MAPPINGS = {
     "LoadImageFromURL": LoadImageFromURL,
-    "LoadVideoFromURL": LoadVideoFromURL,
+    "ComfyVideoURLLoader": ComfyVideoURLLoader,
     "LoadAudioFromURL": LoadAudioFromURL,
     "OSS_Upload": OSS_Upload
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromURL": "🔌 Load Image From URL",
-    "LoadVideoFromURL": "🔌 Load Video From URL",
+    "ComfyVideoURLLoader": "🔌 Load Video From URL",
     "LoadAudioFromURL": "🔌 Load Audio From URL",
     "OSS_Upload": "🔌 Upload to OSS"
 }
@@ -44,7 +44,7 @@ class URLLoaderExtension(ComfyExtension):
         # 汇总所有URL加载节点
         return [
             LoadImageFromURL,
-            LoadVideoFromURL,
+            ComfyVideoURLLoader,
             LoadAudioFromURL,
             OSS_Upload
         ]
