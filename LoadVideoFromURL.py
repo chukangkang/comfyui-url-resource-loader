@@ -168,17 +168,11 @@ class LoadVideoFromURL(ComfyIO.ComfyNode):
         
         return True
 
-# ---------------------------
-# 扩展注册（ComfyUI必需）
-# ---------------------------
-class VideoURLExtension(ComfyExtension):
-    @override
-    async def get_node_list(self) -> list[type[ComfyIO.ComfyNode]]:
-        return [LoadVideoFromURL]
+# 兼容ComfyUI旧版节点映射（确保节点能被识别）
+NODE_CLASS_MAPPINGS = {
+    "LoadVideoFromURL": LoadVideoFromURL
+}
 
-# ---------------------------
-# 入口函数（ComfyUI扩展标准）
-# ---------------------------
-async def comfy_entrypoint() -> VideoURLExtension:
-    print("[LoadVideoFromURL] Extension loaded successfully!")
-    return VideoURLExtension()
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "LoadVideoFromURL": "Load Video From URL"
+}

@@ -307,18 +307,3 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "OSS_Upload": "🔌 OSS Upload"
 }
-
-# ---------------------------
-# 扩展注册（ComfyUI必需）
-# ---------------------------
-class OSS_UploadExtension(ComfyExtension):
-    @override
-    async def get_node_list(self) -> list[type[ComfyIO.ComfyNode]]:
-        return [OSS_Upload]
-
-# ---------------------------
-# 入口函数（ComfyUI扩展标准）
-# ---------------------------
-async def comfy_entrypoint() -> OSS_UploadExtension:
-    print("[OSS_Upload] Extension loaded successfully!")
-    return OSS_UploadExtension()

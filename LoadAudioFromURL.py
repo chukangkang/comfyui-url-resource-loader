@@ -118,16 +118,6 @@ class LoadAudioFromURL(ComfyIO.ComfyNode):
             else:
                 raise RuntimeError(f"从URL加载音频失败：{error_detail}，URL={url}")
 
-# 扩展注册（仅注册LoadAudioFromURL节点）
-class AudioExtension(ComfyExtension):
-    @override
-    async def get_node_list(self) -> list[type[ComfyIO.ComfyNode]]:
-        return [LoadAudioFromURL]
-
-# ComfyUI入口函数
-async def comfy_entrypoint() -> AudioExtension:
-    return AudioExtension()
-
 # 兼容ComfyUI旧版节点映射（确保节点能被识别）
 NODE_CLASS_MAPPINGS = {
     "LoadAudioFromURL": LoadAudioFromURL

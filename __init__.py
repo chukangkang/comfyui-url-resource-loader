@@ -15,6 +15,8 @@ from .LoadImageFromURL import LoadImageFromURL
 from .LoadVideoFromURL import LoadVideoFromURL  # 需确保该文件存在
 # 音频URL加载节点（LoadAudioFromURL）
 from .LoadAudioFromURL import LoadAudioFromURL  # 需确保该文件存在
+# 通用URL资源加载器节点（URLResourceLoader）
+from .url_resource_loader import URLResourceLoader
 # OSS上传节点（OSS_Upload）
 from .oss_uploader import OSS_Upload  # 需确保该文件存在
 
@@ -25,6 +27,7 @@ NODE_CLASS_MAPPINGS = {
     "LoadImageFromURL": LoadImageFromURL,
     "LoadVideoFromURL": LoadVideoFromURL,
     "LoadAudioFromURL": LoadAudioFromURL,
+    "URLResourceLoader": URLResourceLoader,
     "OSS_Upload": OSS_Upload
 }
 
@@ -32,6 +35,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromURL": "Load Image From URL",
     "LoadVideoFromURL": "Load Video From URL",
     "LoadAudioFromURL": "Load Audio From URL",
+    "URLResourceLoader": "URL资源加载器",
     "OSS_Upload": "🔌 OSS Upload"
 }
 
@@ -46,6 +50,7 @@ class URLLoaderExtension(ComfyExtension):
             LoadImageFromURL,
             LoadVideoFromURL,
             LoadAudioFromURL,
+            URLResourceLoader,
             OSS_Upload
         ]
 
