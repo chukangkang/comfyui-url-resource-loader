@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import hashlib
+import asyncio
 
 # 将ComfyUI主目录添加到Python路径
 comfy_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
@@ -14,10 +15,7 @@ if comfy_path not in sys.path:
 
 # 导入ComfyUI核心模块
 try:
-    from typing import Optional
-    from typing_extensions import override
     import folder_paths
-    from comfy_api.latest import ComfyExtension, io as ComfyIO, Input, InputImpl, Types
     import aiohttp
 except ImportError as e:
     print(f"[LoadVideoFromURL] Import error: {e}")
@@ -25,42 +23,55 @@ except ImportError as e:
     raise
 
 # ---------------------------
-# 从URL加载视频的核心节点（修复异步循环问题）
+# 从URL加载视频的核心节点（传统格式，兼容ComfyUI v0.9.2+）
 # ---------------------------
-class LoadVideoFromURL(ComfyIO.ComfyNode):
+class LoadVideoFromURL:
     @classmethod
-    def define_schema(cls):
-        return ComfyIO.Schema(
-            node_id="LoadVideoFromURL",
-            display_name="Load Video From URL",
-            category="image/video",
-            description="Load a video from a remote URL (supports http/https)",
-            inputs=[
-                ComfyIO.String.Input(
-                    "video_url", 
-                    default="", 
-                    tooltip="URL of the video to load (e.g., https://example.com/video.mp4)\nSupported formats: mp4, webm, mov, avi, mkv, flv"
-                ),
-                ComfyIO.Boolean.Input(
-                    "save_to_input_folder", 
-                    default=False, 
-                    tooltip="Whether to save the downloaded video to ComfyUI input folder\nIf False, video will be saved as temporary file"
-                ),
-                ComfyIO.String.Input(
-                    "filename", 
-                    default="downloaded_video", 
-                    tooltip="Filename for saved video (without extension)"
-                ),
-            ],
-            outputs=[
-                ComfyIO.Video.Output(),
-            ],
-        )
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "video_url": ("STRING", {
+                    "default": "",
+                    "multiline": False
+                }),
+                "save_to_input_folder": ("BOOLEAN", {
+                    "default": False,
+                    "label_on": "save",
+                    "label_off": "temp"
+                }),
+                "filename": ("STRING", {
+                    "default": "downloaded_video",
+                    "multiline": False
+                }),
+            }
+        }
     
-    # 关键修改：直接使用异步execute方法，而非同步包装
-    @classmethod
-    async def execute(cls, video_url: str, save_to_input_folder: bool, filename: str) -> ComfyIO.NodeOutput:
-        """异步执行核心逻辑（直接兼容ComfyUI的异步执行环境）"""
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("video_path",)
+    FUNCTION = "load_video"
+    CATEGORY = "loaders"
+    OUTPUT_NODE = False
+
+    def load_video(self, video_url: str, save_to_input_folder: bool, filename: str):
+        """同步包装异步加载逻辑"""
+        try:
+            # 获取或创建事件循环
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # 运行异步函数
+            video_path = loop.run_until_complete(
+                self._load_video_async(video_url, save_to_input_folder, filename)
+            )
+            return (video_path,)
+        except Exception as e:
+            raise RuntimeError(f"[LoadVideoFromURL] Failed to load video: {str(e)}")
+    
+    async def _load_video_async(self, video_url: str, save_to_input_folder: bool, filename: str) -> str:
+        """异步加载视频核心逻辑（保留原算法不变）"""
         # 基础输入验证
         if not video_url:
             raise ValueError("Error: Video URL cannot be empty!")
@@ -72,7 +83,7 @@ class LoadVideoFromURL(ComfyIO.ComfyNode):
         video_path = ""
         
         try:
-            # 1. 创建HTTP会话并下载视频（使用ComfyUI的事件循环）
+            # 1. 创建HTTP会话并下载视频
             timeout = aiohttp.ClientTimeout(total=300)  # 5分钟超时
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(video_url) as response:
@@ -133,9 +144,7 @@ class LoadVideoFromURL(ComfyIO.ComfyNode):
                         video_path = temp_file.name
                         print(f"[LoadVideoFromURL] Video downloaded to temporary file: {video_path} ({downloaded_size/1024/1024:.2f} MB)")
                 
-                # 4. 创建Video对象并返回（与原生节点完全兼容）
-                video_object = InputImpl.VideoFromFile(video_path)
-                return ComfyIO.NodeOutput(video_object)
+                return video_path
                 
         except Exception as e:
             # 异常处理：清理临时文件
@@ -147,32 +156,7 @@ class LoadVideoFromURL(ComfyIO.ComfyNode):
             raise RuntimeError(f"[LoadVideoFromURL] Failed to load video: {str(e)}")
     
     @classmethod
-    def fingerprint_inputs(cls, video_url: str, save_to_input_folder: bool, filename: str):
+    def IS_CHANGED(cls, video_url: str, save_to_input_folder: bool, filename: str):
         """生成缓存指纹（ComfyUI缓存机制）"""
         fingerprint_data = f"{video_url}|{save_to_input_folder}|{filename}".encode('utf-8')
         return hashlib.md5(fingerprint_data).hexdigest()
-    
-    @classmethod
-    def validate_inputs(cls, video_url: str, save_to_input_folder: bool, filename: str):
-        """输入验证（ComfyUI节点系统要求）"""
-        if not video_url:
-            return "Error: Video URL cannot be empty!"
-        
-        if not video_url.startswith(('http://', 'https://')):
-            return "Error: URL must start with http:// or https://!"
-        
-        if save_to_input_folder and filename:
-            invalid_chars = r'\/:*?"<>|'
-            if any(c in filename for c in invalid_chars):
-                return f"Error: Filename cannot contain these characters: {invalid_chars}!"
-        
-        return True
-
-# 兼容ComfyUI旧版节点映射（确保节点能被识别）
-NODE_CLASS_MAPPINGS = {
-    "LoadVideoFromURL": LoadVideoFromURL
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadVideoFromURL": "Load Video From URL"
-}
