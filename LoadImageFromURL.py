@@ -58,6 +58,6 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadImageFromURL": "Load Image From URL"
+    "LoadImageFromURL": "🔌 Load Image From URL"
 }
 

@@ -29,10 +29,10 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadImageFromURL": "Load Image From URL",
-    "LoadVideoFromURL": "Load Video From URL",
-    "LoadAudioFromURL": "Load Audio From URL",
-    "OSS_Upload": "Upload to OSS"
+    "LoadImageFromURL": "🔌 Load Image From URL",
+    "LoadVideoFromURL": "🔌 Load Video From URL",
+    "LoadAudioFromURL": "🔌 Load Audio From URL",
+    "OSS_Upload": "🔌 Upload to OSS"
 }
 
 # ---------------------------
@@ -66,6 +66,6 @@ __all__ = [
 ]
 
 # 可选：添加节点版本信息
-__version__ = "1.1.0"  # 升级版本号，标识新增了VHS视频加载功能
+__version__ = "1.2.0"  # 升级版本号，标识新增了VHS视频加载功能
 __author__ = "chukangkang"
 __description__ = "URL资源加载器（支持图片/音频/视频）"

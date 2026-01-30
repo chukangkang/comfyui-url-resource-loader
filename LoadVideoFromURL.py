@@ -182,3 +182,14 @@ class VideoURLExtension(ComfyExtension):
 async def comfy_entrypoint() -> VideoURLExtension:
     print("[LoadVideoFromURL] Extension loaded successfully!")
     return VideoURLExtension()
+
+# ---------------------------
+# 兼容ComfyUI旧版节点映射（确保节点能被识别）
+# ---------------------------
+NODE_CLASS_MAPPINGS = {
+    "LoadVideoFromURL": LoadVideoFromURL
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "LoadVideoFromURL": "🔌 Load Video From URL"
+}

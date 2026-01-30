@@ -134,5 +134,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadAudioFromURL": "Load Audio From URL"
+    "LoadAudioFromURL": "🔌 Load Audio From URL"
 }
