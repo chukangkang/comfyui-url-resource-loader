@@ -44,14 +44,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # ---------------------------
 class URLLoaderExtension(ComfyExtension):
     @override
-    async def get_nod和工具节点
+    async def get_nodes(self):
         return [
             LoadImageFromURL,
             ComfyVideoURLLoader,
             LoadAudioFromURL,
             OSS_Upload,
-            ClearMemoryromURL,
-            OSS_Upload
+            ClearMemory
         ]
 
 # ---------------------------

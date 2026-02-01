@@ -6,3 +6,5 @@ numpy
 Pillow
 soundfile
 ffmpeg-python
+oss2
+psutil
