@@ -17,6 +17,8 @@ from .LoadVideoFromURL import ComfyVideoURLLoader  # 需确保该文件存在
 from .LoadAudioFromURL import LoadAudioFromURL  # 需确保该文件存在
 # OSS上传节点（OSS_Upload）
 from .oss_uploader import OSS_Upload
+# 内存清理节点（ClearMemory）
+from .ClearMemory import ClearMemory
 
 # ---------------------------
 # 传统节点映射（兼容旧版ComfyUI）
@@ -25,14 +27,16 @@ NODE_CLASS_MAPPINGS = {
     "LoadImageFromURL": LoadImageFromURL,
     "ComfyVideoURLLoader": ComfyVideoURLLoader,
     "LoadAudioFromURL": LoadAudioFromURL,
-    "OSS_Upload": OSS_Upload
+    "OSS_Upload": OSS_Upload,
+    "ClearMemory": ClearMemory
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromURL": "🔌 Load Image From URL",
     "ComfyVideoURLLoader": "🔌 Load Video From URL",
     "LoadAudioFromURL": "🔌 Load Audio From URL",
-    "OSS_Upload": "🔌 Upload to OSS"
+    "OSS_Upload": "🔌 Upload to OSS",
+    "ClearMemory": "🔄 Clear Memory & VRAM"
 }
 
 # ---------------------------
@@ -40,12 +44,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 # ---------------------------
 class URLLoaderExtension(ComfyExtension):
     @override
-    async def get_node_list(self) -> list[type[io.ComfyNode]]:
-        # 汇总所有URL加载节点
+    async def get_nod和工具节点
         return [
             LoadImageFromURL,
             ComfyVideoURLLoader,
             LoadAudioFromURL,
+            OSS_Upload,
+            ClearMemoryromURL,
             OSS_Upload
         ]
 
