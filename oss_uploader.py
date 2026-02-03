@@ -59,8 +59,8 @@ class OSS_Upload:
                 # 文件信息（JSON 格式）
                 "file_list": ("STRING",),  # JSON: {"images": [...], "videos": [...]}
                 
-                # 新增：文件获取模式
-                "file_source_mode": (["file_list", "auto_scan", "history_api"],),
+                # 文件获取模式（推荐 auto_scan）
+                "file_source_mode": (["auto_scan", "file_list", "history_api"],),
             },
             "optional": {
                 # 可选的文件输入（支持直接传入张量）
@@ -72,10 +72,13 @@ class OSS_Upload:
                 "delete_after_upload": ("BOOLEAN", {"default": True}),
                 "timeout_seconds": ("INT", {"default": 300}),
                 
-                # History API 相关
-                "prompt_id": ("STRING", {"default": ""}),  # ComfyUI workflow执行的prompt_id
+                # Auto scan 相关
                 "auto_scan_pattern": ("STRING", {"default": "*.*"}),  # 自动扫描的文件模式
                 "scan_subdirs": ("BOOLEAN", {"default": True}),  # 是否扫描子目录
+                "min_file_time": ("FLOAT", {"default": 0.0}),  # 最小文件时间戳（过滤旧文件）
+                
+                # History API 相关
+                "prompt_id": ("STRING", {"default": ""}),  # ComfyUI workflow执行的prompt_id
             }
         }
     
@@ -100,9 +103,10 @@ class OSS_Upload:
         audios=None,
         delete_after_upload: bool = True,
         timeout_seconds: int = 300,
-        prompt_id: str = "",
         auto_scan_pattern: str = "*.*",
         scan_subdirs: bool = True,
+        min_file_time: float = 0.0,
+        prompt_id: str = "",
     ) -> Tuple[str]:
         """
         主上传函数
@@ -118,9 +122,10 @@ class OSS_Upload:
             file_source_mode: 文件获取模式 (file_list/auto_scan/history_api)
             delete_after_upload: 上传后是否删除本地文件
             timeout_seconds: 上传超时时间
-            prompt_id: ComfyUI prompt ID (用于history API)
             auto_scan_pattern: 自动扫描文件模式
             scan_subdirs: 是否扫描子目录
+            min_file_time: 最小文件时间戳（Unix timestamp），过滤此时间之前的文件
+            prompt_id: ComfyUI prompt ID (用于history API)
         """
         
         try:
@@ -139,10 +144,10 @@ class OSS_Upload:
             )
             
             # 根据模式获取文件列表
-            if file_source_mode == "history_api":
+            if file_source_mode == "auto_scan":
+                files_info = self._scan_output_directory(auto_scan_pattern, scan_subdirs, min_file_time)
+            elif file_source_mode == "history_api":
                 files_info = self._get_files_from_history_api(prompt_id, file_list)
-            elif file_source_mode == "auto_scan":
-                files_info = self._scan_output_directory(auto_scan_pattern, scan_subdirs)
             else:  # file_list
                 files_info = self._parse_file_list(file_list)
             
@@ -218,8 +223,14 @@ class OSS_Upload:
             print(f"Failed to parse file_list: {e}")
             return {}
     
-    def _scan_output_directory(self, pattern: str = "*.*", scan_subdirs: bool = True) -> Dict[str, List[Dict]]:
-        """自动扫描output目录，获取文件列表"""
+    def _scan_output_directory(self, pattern: str = "*.*", scan_subdirs: bool = True, min_file_time: float = 0.0) -> Dict[str, List[Dict]]:
+        """自动扫描output目录，获取文件列表
+        
+        Args:
+            pattern: 文件匹配模式
+            scan_subdirs: 是否扫描子目录
+            min_file_time: 最小文件时间戳，只扫描此时间之后创建/修改的文件
+        """
         files_info = {}
         
         try:
@@ -231,10 +242,22 @@ class OSS_Upload:
                 search_pattern = os.path.join(self.output_dir, pattern)
                 file_paths = glob.glob(search_pattern)
             
+            print(f"🔍 Scanning output directory: {self.output_dir}")
+            print(f"   Pattern: {pattern}, Subdirs: {scan_subdirs}, Min time: {min_file_time}")
+            
+            filtered_count = 0
+            
             # 按文件类型分类
             for file_path in file_paths:
                 if not os.path.isfile(file_path):
                     continue
+                
+                # 时间戳过滤：只上传在指定时间之后创建/修改的文件
+                if min_file_time > 0:
+                    file_mtime = os.path.getmtime(file_path)
+                    if file_mtime < min_file_time:
+                        filtered_count += 1
+                        continue
                 
                 filename = os.path.basename(file_path)
                 # 计算相对于output_dir的子文件夹路径
@@ -254,9 +277,18 @@ class OSS_Upload:
                     "type": file_type
                 })
             
+            total_files = sum(len(v) for v in files_info.values())
+            print(f"✅ Found {total_files} files (filtered {filtered_count} old files)")
+            
+            if total_files > 0:
+                for file_type, file_list in files_info.items():
+                    print(f"   - {file_type}: {len(file_list)} files")
+            
             return files_info
         except Exception as e:
+            import traceback
             print(f"Failed to scan output directory: {e}")
+            print(traceback.format_exc())
             return {}
     
     def _get_files_from_history_api(self, prompt_id: str, fallback_file_list: str) -> Dict[str, List[Dict]]:

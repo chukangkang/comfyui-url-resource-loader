@@ -97,9 +97,9 @@ https://picsum.photos/800/600
 - `task_id` (STRING) - 任务ID（用于文件路径组织）
 - `file_list` (STRING) - 文件列表JSON（支持_metadata）
 - `file_source_mode` (ENUM) - 文件获取模式：
+  - `auto_scan` - **自动扫描output目录（推荐）**
   - `file_list` - 使用传入的file_list参数
-  - `auto_scan` - 自动扫描output目录
-  - `history_api` - **从ComfyUI History API自动获取当前工作流生成结果（推荐）**
+  - `history_api` - 从ComfyUI History API自动获取当前工作流生成结果
 
 **输入参数（可选）：**
 - `images` (IMAGE) - 可选的图片张量输入
@@ -107,12 +107,13 @@ https://picsum.photos/800/600
 - `audios` (AUDIO) - 可选的音频输入
 - `delete_after_upload` (BOOLEAN) - 上传后是否删除本地文件，默认：True
 - `timeout_seconds` (INT) - 上传超时时间（秒），默认：300
+- `auto_scan_pattern` (STRING) - 自动扫描的文件模式，默认：`*.*`
+- `scan_subdirs` (BOOLEAN) - 是否扫描子目录，默认：True
+- `min_file_time` (FLOAT) - 最小文件时间戳（Unix timestamp），只上传此时间之后的文件，默认：0.0（不过滤）
 - `prompt_id` (STRING) - ComfyUI执行的prompt_id
   - **如果留空，自动获取最新工作流的执行结果**
   - **如果指定，获取特定工作流的执行结果**
   - 仅在history_api模式下使用
-- `auto_scan_pattern` (STRING) - 自动扫描的文件模式，默认：`*.*`
-- `scan_subdirs` (BOOLEAN) - 是否扫描子目录，默认：True
 
 **输出：**
 - `upload_result` (STRING) - JSON格式的上传结果，包含：
@@ -137,7 +138,24 @@ https://picsum.photos/800/600
 
 **使用场景：**
 
-1. **使用history_api模式（推荐 - 自动获取当前工作流结果）**
+1. **使用auto_scan模式（推荐 - 避免时序问题）**
+   ```json
+   {
+     "file_source_mode": "auto_scan",
+     "auto_scan_pattern": "*.*",
+     "scan_subdirs": true,
+     "min_file_time": 1738570663.0  // 只上传此时间戳之后的文件
+   }
+   ```
+   
+   **特点：**
+   - ✅ 避免 prompt_id 时序问题
+   - ✅ 通过时间戳过滤，只上传最新生成的文件
+   - ✅ 简单可靠，不依赖 History API
+   - ✅ 支持自定义文件模式和子目录扫描
+   - ✅ 后端可传入工作流开始时间作为 min_file_time
+
+2. **使用history_api模式（自动获取当前工作流结果）**
    ```json
    {
      "file_source_mode": "history_api",
@@ -150,9 +168,9 @@ https://picsum.photos/800/600
    - ✅ 完全自动化，无需手动指定文件
    - ✅ 自动获取当前工作流的所有输出（图片、视频、音频等）
    - ✅ 支持自动检测最新的工作流执行
-   - ✅ 失败时自动回退到file_list模式
+   - ⚠️ 可能存在时序问题（节点执行顺序导致 prompt_id 未生成）
 
-2. **使用file_list模式（精确控制）**
+3. **使用file_list模式（精确控制）**
    ```json
    {
      "file_source_mode": "file_list",
@@ -170,17 +188,28 @@ https://picsum.photos/800/600
    }
    ```
 
-3. **使用auto_scan模式（批量扫描）**
-   ```json
-   {
-     "file_source_mode": "auto_scan",
-     "auto_scan_pattern": "*.png",
-     "scan_subdirs": true
-   }
-   ```
-   - 自动扫描`/root/ComfyUI/output`目录
-   - 支持自定义扫描模式（如`*.png`、`*.mp4`）
-   - 可选择是否扫描子目录
+**推荐使用 auto_scan + min_file_time 组合：**
+
+后端在提交任务时记录当前时间戳，然后注入 OSS_Upload 节点时传入：
+
+```python
+import time
+
+# 任务开始时记录时间戳
+task_start_time = time.time()
+
+# 注入 OSS_Upload 节点
+oss_node = {
+    "file_source_mode": "auto_scan",
+    "min_file_time": task_start_time,  # 只上传任务开始后的文件
+    ...
+}
+```
+
+这样可以：
+- ✅ 避免上传旧文件
+- ✅ 避免 prompt_id 时序问题
+- ✅ 保证只上传当前任务的输出
 
 **_metadata支持：**
 节点现在能够识别并处理file_list中的`_metadata`字段，优先使用metadata中的文件路径信息来定位文件。
