@@ -151,6 +151,14 @@ class OSS_Upload:
         """
         
         try:
+            print("\n" + "="*80)
+            print(f"🚀 OSS_Upload Node Execution Started")
+            print(f"   Task ID: {task_id}")
+            print(f"   Mode: {file_source_mode}")
+            print(f"   Output Dir: {self.output_dir}")
+            print(f"   Delete After Upload: {delete_after_upload}")
+            print("="*80 + "\n")
+            
             # 如果使用 auto_scan 模式，等待一下让文件完全生成
             if file_source_mode == "auto_scan" and scan_delay > 0:
                 print(f"⏱️  Waiting {scan_delay}s for files to be fully generated...")
@@ -211,6 +219,14 @@ class OSS_Upload:
                 }),)
             
             # 执行上传
+            print(f"\n📤 Starting upload to OSS...")
+            print(f"   Bucket: {bucket_name}")
+            print(f"   Task ID: {task_id}")
+            print(f"   Total file types: {len(files_info)}")
+            for ftype, flist in files_info.items():
+                print(f"   - {ftype}: {len(flist)} files")
+            print()
+            
             upload_result = self._upload_files(
                 oss_client,
                 bucket_name,
@@ -219,6 +235,22 @@ class OSS_Upload:
                 delete_after_upload,
                 timeout_seconds
             )
+            
+            print(f"\n" + "="*80)
+            print(f"✅ OSS_Upload Node Execution Completed")
+            print(f"   Status: {upload_result.get('status')}")
+            print(f"   Uploaded: {upload_result.get('uploaded_count')} files")
+            print(f"   Failed: {upload_result.get('failed_count')} files")
+            print(f"   Total size: {upload_result.get('total_size')} bytes")
+            if upload_result.get('uploaded_files'):
+                print(f"\n   Uploaded files:")
+                for f in upload_result['uploaded_files']:
+                    print(f"   ✓ {f['filename']} -> {f['oss_path']}")
+            if upload_result.get('failed_files'):
+                print(f"\n   Failed files:")
+                for f in upload_result['failed_files']:
+                    print(f"   ✗ {f['filename']}: {f['reason']}")
+            print("="*80 + "\n")
             
             return (json.dumps(upload_result),)
         
@@ -320,7 +352,23 @@ class OSS_Upload:
             print(f"   Search pattern: {search_pattern}")
             print(f"   Glob pattern: {pattern}, Recursive: {scan_subdirs}")
             print(f"   Min file time: {min_file_time} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(min_file_time)) if min_file_time > 0 else 'No filter'})")
-            print(f"   Found {len(file_paths)} potential files/dirs")
+            print(f"   Current time: {time.time()} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())})")
+            print(f"   Found {len(file_paths)} potential files/dirs\n")
+            
+            if len(file_paths) > 0:
+                print(f"📋 All paths found by glob:")
+                for i, p in enumerate(file_paths[:50], 1):  # 显示前50个
+                    is_file = os.path.isfile(p)
+                    if is_file:
+                        mtime = os.path.getmtime(p)
+                        size = os.path.getsize(p)
+                        print(f"   {i}. [FILE] {p}")
+                        print(f"      Size: {size} bytes, Modified: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))} ({mtime})")
+                    else:
+                        print(f"   {i}. [DIR] {p}")
+                if len(file_paths) > 50:
+                    print(f"   ... and {len(file_paths) - 50} more")
+                print()
             
             filtered_count = 0
             skipped_count = 0
@@ -558,8 +606,14 @@ class OSS_Upload:
                     else:
                         local_path = os.path.join(self.output_dir, filename)
                     
+                    print(f"\n🔍 Processing: {filename}")
+                    print(f"   Local path: {local_path}")
+                    print(f"   Subfolder: '{subfolder}'")
+                    print(f"   File type: {file_type}")
+                    
                     # 检查文件是否存在
                     if not os.path.exists(local_path):
+                        print(f"   ❌ File does not exist at: {local_path}")
                         failed_files.append({
                             "filename": filename,
                             "reason": "File not found"
@@ -583,11 +637,18 @@ class OSS_Upload:
                         # 未知类型，直接放在根目录
                         oss_path = f"outputs/{task_id}/{filename}"
                     
+                    print(f"   OSS path: {oss_path}")
+                    
                     # 获取文件大小和 Content-Type
                     file_size = os.path.getsize(local_path)
                     content_type = self._get_content_type(filename)
                     
+                    print(f"   File size: {file_size} bytes")
+                    print(f"   Content-Type: {content_type}")
+                    print(f"   Starting upload to bucket: {bucket_name}")
+                    
                     # 上传文件
+                    upload_start = time.time()
                     with open(local_path, "rb") as f:
                         oss_client.put_object(
                             bucket_name,
@@ -595,6 +656,8 @@ class OSS_Upload:
                             f,
                             headers={"Content-Type": content_type}
                         )
+                    upload_duration = time.time() - upload_start
+                    print(f"   Upload completed in {upload_duration:.2f}s")
                     
                     total_size += file_size
                     
@@ -602,8 +665,9 @@ class OSS_Upload:
                     if delete_after_upload:
                         try:
                             os.remove(local_path)
-                        except:
-                            pass
+                            print(f"   Deleted local file: {local_path}")
+                        except Exception as del_err:
+                            print(f"   ⚠️  Could not delete local file: {del_err}")
                     
                     uploaded_files.append({
                         "filename": filename,
