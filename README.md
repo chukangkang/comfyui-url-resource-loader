@@ -88,16 +88,75 @@ https://picsum.photos/800/600
 ### 📤 Upload to OSS
 **功能：** 上传文件到阿里云OSS存储
 
-**输入参数：**
-- `local_path` (STRING) - 本地文件路径
-- `oss_path` (STRING) - OSS中的目标路径
-- `access_key_id` (STRING) - 阿里云AccessKeyId
-- `access_key_secret` (STRING) - 阿里云AccessKeySecret
+**输入参数（必填）：**
+- `access_key_id` (STRING) - 阿里云AccessKeyId（STS临时凭证）
+- `access_key_secret` (STRING) - 阿里云AccessKeySecret（STS临时凭证）
+- `security_token` (STRING) - STS临时安全令牌
 - `bucket_name` (STRING) - OSS Bucket名称
 - `endpoint` (STRING) - OSS服务端点
+- `task_id` (STRING) - 任务ID（用于文件路径组织）
+- `file_list` (STRING) - 文件列表JSON（支持_metadata）
+- `file_source_mode` (ENUM) - 文件获取模式：
+  - `file_list` - 使用传入的file_list参数（默认）
+  - `auto_scan` - 自动扫描output目录
+  - `history_api` - 从ComfyUI History API获取文件列表
+
+**输入参数（可选）：**
+- `images` (IMAGE) - 可选的图片张量输入
+- `videos` (VIDEO) - 可选的视频输入
+- `audios` (AUDIO) - 可选的音频输入
+- `delete_after_upload` (BOOLEAN) - 上传后是否删除本地文件，默认：True
+- `timeout_seconds` (INT) - 上传超时时间（秒），默认：300
+- `prompt_id` (STRING) - ComfyUI执行的prompt_id（history_api模式需要）
+- `auto_scan_pattern` (STRING) - 自动扫描的文件模式，默认：`*.*`
+- `scan_subdirs` (BOOLEAN) - 是否扫描子目录，默认：True
 
 **输出：**
-- `status` (STRING) - 上传状态
+- `upload_result` (STRING) - JSON格式的上传结果，包含：
+  - `status` - 上传状态（success/partial/error）
+  - `task_id` - 任务ID
+  - `uploaded_count` - 成功上传文件数
+  - `failed_count` - 失败文件数
+  - `total_size` - 总上传大小（字节）
+  - `uploaded_files` - 已上传文件列表
+  - `failed_files` - 失败文件列表
+  - `timestamp` - 时间戳
+
+**使用场景：**
+
+1. **使用file_list模式（默认）**
+   ```json
+   {
+     "images": [
+       {
+         "filename": "output_001.png",
+         "subfolder": "",
+         "_metadata": {
+           "filename": "output_001.png",
+           "subfolder": "",
+           "type": "output"
+         }
+       }
+     ]
+   }
+   ```
+
+2. **使用auto_scan模式**
+   - 自动扫描`/root/ComfyUI/output`目录
+   - 支持自定义扫描模式（如`*.png`、`*.mp4`）
+   - 可选择是否扫描子目录
+
+3. **使用history_api模式**
+   - 需要提供`prompt_id`参数
+   - 自动从ComfyUI的History API获取文件列表
+   - 如果API调用失败，会自动回退到file_list模式
+
+**_metadata支持：**
+节点现在能够识别并处理file_list中的`_metadata`字段，优先使用metadata中的文件路径信息来定位文件。
+
+**环境变量：**
+- `COMFYUI_HOST` - ComfyUI服务地址，默认：127.0.0.1
+- `COMFYUI_PORT` - ComfyUI服务端口，默认：12800
 
 ## 工作流示例
 
