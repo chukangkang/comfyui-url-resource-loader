@@ -110,6 +110,7 @@ https://picsum.photos/800/600
 - `auto_scan_pattern` (STRING) - 自动扫描的文件模式，默认：`*.*`
 - `scan_subdirs` (BOOLEAN) - 是否扫描子目录，默认：True
 - `min_file_time` (FLOAT) - 最小文件时间戳（Unix timestamp），只上传此时间之后的文件，默认：0.0（不过滤）
+- `scan_delay` (FLOAT) - 扫描延迟（秒），等待文件完全生成后再扫描，默认：0.5
 - `prompt_id` (STRING) - ComfyUI执行的prompt_id
   - **如果留空，自动获取最新工作流的执行结果**
   - **如果指定，获取特定工作流的执行结果**
@@ -217,6 +218,7 @@ oss_node = {
 **环境变量：**
 - `COMFYUI_HOST` - ComfyUI服务地址，默认：127.0.0.1
 - `COMFYUI_PORT` - ComfyUI服务端口，默认：12800
+- `COMFYUI_OUTPUT_DIR` - ComfyUI输出目录路径，默认：/root/ComfyUI/output
 
 ## 工作流示例
 

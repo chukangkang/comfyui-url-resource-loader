@@ -35,9 +35,28 @@ class OSS_Upload:
     """
     
     def __init__(self):
-        self.output_dir = "/root/ComfyUI/output"
-        if not os.path.exists(self.output_dir):
-            self.output_dir = "./output"
+        # 尝试多个可能的 output 目录路径
+        # 优先使用环境变量指定的路径
+        custom_output = os.getenv("COMFYUI_OUTPUT_DIR")
+        
+        possible_dirs = [
+            custom_output,
+            "/root/ComfyUI/output",
+            os.path.join(os.getcwd(), "output"),
+            "./output",
+            "../output"
+        ]
+        
+        self.output_dir = None
+        for dir_path in possible_dirs:
+            if dir_path and os.path.exists(dir_path) and os.path.isdir(dir_path):
+                self.output_dir = os.path.abspath(dir_path)
+                break
+        
+        if not self.output_dir:
+            self.output_dir = "/root/ComfyUI/output"  # 默认值
+        
+        print(f"📁 OSS_Upload using output directory: {self.output_dir}")
         self.comfyui_host = os.getenv("COMFYUI_HOST", "127.0.0.1")
         self.comfyui_port = os.getenv("COMFYUI_PORT", "12800")
     
@@ -76,6 +95,7 @@ class OSS_Upload:
                 "auto_scan_pattern": ("STRING", {"default": "*.*"}),  # 自动扫描的文件模式
                 "scan_subdirs": ("BOOLEAN", {"default": True}),  # 是否扫描子目录
                 "min_file_time": ("FLOAT", {"default": 0.0}),  # 最小文件时间戳（过滤旧文件）
+                "scan_delay": ("FLOAT", {"default": 0.5}),  # 扫描延迟（秒），等待文件生成
                 
                 # History API 相关
                 "prompt_id": ("STRING", {"default": ""}),  # ComfyUI workflow执行的prompt_id
@@ -106,6 +126,7 @@ class OSS_Upload:
         auto_scan_pattern: str = "*.*",
         scan_subdirs: bool = True,
         min_file_time: float = 0.0,
+        scan_delay: float = 0.5,
         prompt_id: str = "",
     ) -> Tuple[str]:
         """
@@ -125,10 +146,15 @@ class OSS_Upload:
             auto_scan_pattern: 自动扫描文件模式
             scan_subdirs: 是否扫描子目录
             min_file_time: 最小文件时间戳（Unix timestamp），过滤此时间之前的文件
+            scan_delay: 扫描延迟（秒），等待文件完全生成后再扫描
             prompt_id: ComfyUI prompt ID (用于history API)
         """
         
         try:
+            # 如果使用 auto_scan 模式，等待一下让文件完全生成
+            if file_source_mode == "auto_scan" and scan_delay > 0:
+                print(f"⏱️  Waiting {scan_delay}s for files to be fully generated...")
+                time.sleep(scan_delay)
             if not HAVE_OSS2:
                 return (json.dumps({
                     "status": "error",
@@ -242,24 +268,35 @@ class OSS_Upload:
                 search_pattern = os.path.join(self.output_dir, pattern)
                 file_paths = glob.glob(search_pattern)
             
-            print(f"🔍 Scanning output directory: {self.output_dir}")
-            print(f"   Pattern: {pattern}, Subdirs: {scan_subdirs}, Min time: {min_file_time}")
+            print(f"\n🔍 Scanning output directory: {self.output_dir}")
+            print(f"   Search pattern: {search_pattern}")
+            print(f"   Glob pattern: {pattern}, Recursive: {scan_subdirs}")
+            print(f"   Min file time: {min_file_time} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(min_file_time)) if min_file_time > 0 else 'No filter'})")
+            print(f"   Found {len(file_paths)} potential files/dirs")
             
             filtered_count = 0
+            skipped_count = 0
             
             # 按文件类型分类
             for file_path in file_paths:
                 if not os.path.isfile(file_path):
+                    skipped_count += 1
                     continue
+                
+                file_mtime = os.path.getmtime(file_path)
+                filename = os.path.basename(file_path)
                 
                 # 时间戳过滤：只上传在指定时间之后创建/修改的文件
                 if min_file_time > 0:
-                    file_mtime = os.path.getmtime(file_path)
                     if file_mtime < min_file_time:
                         filtered_count += 1
+                        print(f"   ⏭️  Filtered (too old): {filename} (mtime: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mtime))})")
                         continue
+                    else:
+                        print(f"   ✓ Matched: {filename} (mtime: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mtime))})")
+                else:
+                    print(f"   ✓ Found: {filename} (mtime: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mtime))})")
                 
-                filename = os.path.basename(file_path)
                 # 计算相对于output_dir的子文件夹路径
                 rel_path = os.path.relpath(os.path.dirname(file_path), self.output_dir)
                 subfolder = "" if rel_path == "." else rel_path
@@ -278,11 +315,26 @@ class OSS_Upload:
                 })
             
             total_files = sum(len(v) for v in files_info.values())
-            print(f"✅ Found {total_files} files (filtered {filtered_count} old files)")
+            print(f"\n📊 Scan Results:")
+            print(f"   Total matched files: {total_files}")
+            print(f"   Filtered (old): {filtered_count}")
+            print(f"   Skipped (not file): {skipped_count}")
             
             if total_files > 0:
+                print(f"\n📦 Files by type:")
                 for file_type, file_list in files_info.items():
                     print(f"   - {file_type}: {len(file_list)} files")
+                    for f in file_list[:5]:  # 只显示前5个
+                        display_path = f"{f['subfolder']}/{f['filename']}" if f['subfolder'] else f['filename']
+                        print(f"     • {display_path}")
+                    if len(file_list) > 5:
+                        print(f"     ... and {len(file_list) - 5} more")
+            else:
+                print(f"   ⚠️  No files found matching criteria!")
+                print(f"   Consider checking:")
+                print(f"     - Output directory exists and has files: {self.output_dir}")
+                print(f"     - File pattern is correct: {pattern}")
+                print(f"     - Time filter is not too strict: {min_file_time}")
             
             return files_info
         except Exception as e:
