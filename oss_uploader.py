@@ -95,7 +95,7 @@ class OSS_Upload:
                 "auto_scan_pattern": ("STRING", {"default": "*.*"}),  # 自动扫描的文件模式
                 "scan_subdirs": ("BOOLEAN", {"default": True}),  # 是否扫描子目录
                 "min_file_time": ("FLOAT", {"default": 0.0}),  # 最小文件时间戳（过滤旧文件）
-                "scan_delay": ("FLOAT", {"default": 0.5}),  # 扫描延迟（秒），等待文件生成
+                "scan_delay": ("FLOAT", {"default": 2.0}),  # 扫描延迟（秒），等待文件生成
                 
                 # History API 相关
                 "prompt_id": ("STRING", {"default": ""}),  # ComfyUI workflow执行的prompt_id
@@ -126,7 +126,7 @@ class OSS_Upload:
         auto_scan_pattern: str = "*.*",
         scan_subdirs: bool = True,
         min_file_time: float = 0.0,
-        scan_delay: float = 0.5,
+        scan_delay: float = 2.0,
         prompt_id: str = "",
     ) -> Tuple[str]:
         """
@@ -171,16 +171,43 @@ class OSS_Upload:
             
             # 根据模式获取文件列表
             if file_source_mode == "auto_scan":
-                files_info = self._scan_output_directory(auto_scan_pattern, scan_subdirs, min_file_time)
+                # 带重试的扫描逻辑
+                max_retries = 3
+                retry_delay = 1.0
+                files_info = {}
+                
+                for attempt in range(max_retries):
+                    if attempt > 0:
+                        print(f"🔄 Retry {attempt}/{max_retries - 1}: No files found, waiting {retry_delay}s and scanning again...")
+                        time.sleep(retry_delay)
+                    
+                    files_info = self._scan_output_directory(auto_scan_pattern, scan_subdirs, min_file_time)
+                    
+                    if files_info:
+                        print(f"✅ Files found on attempt {attempt + 1}")
+                        break
+                    
+                    if attempt < max_retries - 1:
+                        print(f"⚠️  No files found on attempt {attempt + 1}")
+                
             elif file_source_mode == "history_api":
                 files_info = self._get_files_from_history_api(prompt_id, file_list)
             else:  # file_list
                 files_info = self._parse_file_list(file_list)
             
             if not files_info:
+                error_msg = f"No files found with mode: {file_source_mode}"
+                if file_source_mode == "auto_scan":
+                    error_msg += f"\n  Output dir: {self.output_dir}"
+                    error_msg += f"\n  Pattern: {auto_scan_pattern}"
+                    error_msg += f"\n  Min time: {min_file_time} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(min_file_time)) if min_file_time > 0 else 'No filter'})"
+                    error_msg += f"\n  Scan delay: {scan_delay}s"
+                    error_msg += "\n  Suggestion: Check if files are being generated and adjust scan_delay or min_file_time"
+                
+                print(f"❌ {error_msg}")
                 return (json.dumps({
                     "status": "error",
-                    "message": f"No files found with mode: {file_source_mode}"
+                    "message": error_msg
                 }),)
             
             # 执行上传
@@ -260,6 +287,27 @@ class OSS_Upload:
         files_info = {}
         
         try:
+            # 首先检查输出目录是否存在
+            if not os.path.exists(self.output_dir):
+                print(f"❌ Output directory does not exist: {self.output_dir}")
+                return {}
+            
+            # 列出输出目录的内容
+            try:
+                dir_contents = os.listdir(self.output_dir)
+                print(f"📂 Output directory contents ({len(dir_contents)} items):")
+                for item in sorted(dir_contents)[:20]:  # 只显示前20个
+                    item_path = os.path.join(self.output_dir, item)
+                    if os.path.isfile(item_path):
+                        mtime = os.path.getmtime(item_path)
+                        size = os.path.getsize(item_path)
+                        print(f"   📄 {item} ({size} bytes, {time.strftime('%H:%M:%S', time.localtime(mtime))})")
+                    else:
+                        print(f"   📁 {item}/")
+                if len(dir_contents) > 20:
+                    print(f"   ... and {len(dir_contents) - 20} more items")
+            except Exception as e:
+                print(f"⚠️  Could not list directory contents: {e}")
             # 根据是否扫描子目录选择不同的glob模式
             if scan_subdirs:
                 search_pattern = os.path.join(self.output_dir, "**", pattern)

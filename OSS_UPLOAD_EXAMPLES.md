@@ -25,6 +25,8 @@ OSS_Upload节点现在支持三种文件获取模式，**推荐使用 auto_scan 
 - ✅ **精确过滤**：通过时间戳只上传本次任务的文件
 - ✅ **简单可靠**：无需 History API，减少依赖
 - ✅ **灵活配置**：支持文件模式和子目录扫描
+- ✅ **自动重试**：如果第一次没找到文件，会自动重试最多3次
+- ✅ **详细日志**：显示目录内容、扫描过程和匹配结果
 
 ### 后端集成示例
 
@@ -49,6 +51,7 @@ oss_upload_node = {
         "auto_scan_pattern": "*.*",
         "scan_subdirs": True,
         "min_file_time": task_start_time,  # 关键：只上传任务开始后的文件
+        "scan_delay": 2.0,  # 等待2秒让文件完全生成
         "delete_after_upload": True
     }
 }

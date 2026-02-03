@@ -110,7 +110,7 @@ https://picsum.photos/800/600
 - `auto_scan_pattern` (STRING) - 自动扫描的文件模式，默认：`*.*`
 - `scan_subdirs` (BOOLEAN) - 是否扫描子目录，默认：True
 - `min_file_time` (FLOAT) - 最小文件时间戳（Unix timestamp），只上传此时间之后的文件，默认：0.0（不过滤）
-- `scan_delay` (FLOAT) - 扫描延迟（秒），等待文件完全生成后再扫描，默认：0.5
+- `scan_delay` (FLOAT) - 扫描延迟（秒），等待文件完全生成后再扫描，默认：2.0
 - `prompt_id` (STRING) - ComfyUI执行的prompt_id
   - **如果留空，自动获取最新工作流的执行结果**
   - **如果指定，获取特定工作流的执行结果**
@@ -145,7 +145,8 @@ https://picsum.photos/800/600
      "file_source_mode": "auto_scan",
      "auto_scan_pattern": "*.*",
      "scan_subdirs": true,
-     "min_file_time": 1738570663.0  // 只上传此时间戳之后的文件
+     "min_file_time": 1738570663.0,  // 只上传此时间戳之后的文件
+     "scan_delay": 2.0  // 等待2秒让文件完全生成
    }
    ```
    
@@ -155,6 +156,7 @@ https://picsum.photos/800/600
    - ✅ 简单可靠，不依赖 History API
    - ✅ 支持自定义文件模式和子目录扫描
    - ✅ 后端可传入工作流开始时间作为 min_file_time
+   - ✅ **自动重试机制**：如果第一次没找到文件，会等待后重试最多3次
 
 2. **使用history_api模式（自动获取当前工作流结果）**
    ```json
