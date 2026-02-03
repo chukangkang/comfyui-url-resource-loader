@@ -97,9 +97,9 @@ https://picsum.photos/800/600
 - `task_id` (STRING) - 任务ID（用于文件路径组织）
 - `file_list` (STRING) - 文件列表JSON（支持_metadata）
 - `file_source_mode` (ENUM) - 文件获取模式：
-  - `file_list` - 使用传入的file_list参数（默认）
+  - `file_list` - 使用传入的file_list参数
   - `auto_scan` - 自动扫描output目录
-  - `history_api` - 从ComfyUI History API获取文件列表
+  - `history_api` - **从ComfyUI History API自动获取当前工作流生成结果（推荐）**
 
 **输入参数（可选）：**
 - `images` (IMAGE) - 可选的图片张量输入
@@ -107,7 +107,10 @@ https://picsum.photos/800/600
 - `audios` (AUDIO) - 可选的音频输入
 - `delete_after_upload` (BOOLEAN) - 上传后是否删除本地文件，默认：True
 - `timeout_seconds` (INT) - 上传超时时间（秒），默认：300
-- `prompt_id` (STRING) - ComfyUI执行的prompt_id（history_api模式需要）
+- `prompt_id` (STRING) - ComfyUI执行的prompt_id
+  - **如果留空，自动获取最新工作流的执行结果**
+  - **如果指定，获取特定工作流的执行结果**
+  - 仅在history_api模式下使用
 - `auto_scan_pattern` (STRING) - 自动扫描的文件模式，默认：`*.*`
 - `scan_subdirs` (BOOLEAN) - 是否扫描子目录，默认：True
 
@@ -124,9 +127,25 @@ https://picsum.photos/800/600
 
 **使用场景：**
 
-1. **使用file_list模式（默认）**
+1. **使用history_api模式（推荐 - 自动获取当前工作流结果）**
    ```json
    {
+     "file_source_mode": "history_api",
+     "prompt_id": "",  // 留空，自动获取当前工作流的所有生成结果
+     "file_list": "{}"  // 作为备用方案
+   }
+   ```
+   
+   **特点：**
+   - ✅ 完全自动化，无需手动指定文件
+   - ✅ 自动获取当前工作流的所有输出（图片、视频、音频等）
+   - ✅ 支持自动检测最新的工作流执行
+   - ✅ 失败时自动回退到file_list模式
+
+2. **使用file_list模式（精确控制）**
+   ```json
+   {
+     "file_source_mode": "file_list",
      "images": [
        {
          "filename": "output_001.png",
@@ -141,15 +160,17 @@ https://picsum.photos/800/600
    }
    ```
 
-2. **使用auto_scan模式**
+3. **使用auto_scan模式（批量扫描）**
+   ```json
+   {
+     "file_source_mode": "auto_scan",
+     "auto_scan_pattern": "*.png",
+     "scan_subdirs": true
+   }
+   ```
    - 自动扫描`/root/ComfyUI/output`目录
    - 支持自定义扫描模式（如`*.png`、`*.mp4`）
    - 可选择是否扫描子目录
-
-3. **使用history_api模式**
-   - 需要提供`prompt_id`参数
-   - 自动从ComfyUI的History API获取文件列表
-   - 如果API调用失败，会自动回退到file_list模式
 
 **_metadata支持：**
 节点现在能够识别并处理file_list中的`_metadata`字段，优先使用metadata中的文件路径信息来定位文件。
@@ -160,16 +181,31 @@ https://picsum.photos/800/600
 
 ## 工作流示例
 
-### 基础图片加载工作流
+### 图片生成 + 自动上传到OSS
 ```
 [Clear Memory & VRAM] 
     ↓
 [Load Image From URL] (输入图片URL)
     ↓
-[其他处理节点...]
+[图片处理节点...]
+    ↓
+[Save Image]
+    ↓
+[Upload to OSS] (自动上传当前工作流生成的所有图片)
 ```
 
-### 多资源加载工作流
+### 视频生成 + 自动上传到OSS
+```
+[Load Video From URL]
+    ↓
+[视频处理节点...]
+    ↓
+[Save Video]
+    ↓
+[Upload to OSS] (file_source_mode="history_api", prompt_id="")
+```
+
+### 多资源处理工作流
 ```
 [Clear Memory & VRAM]
     ↓
@@ -178,6 +214,10 @@ https://picsum.photos/800/600
 └─[Load Video From URL]
     ↓
 [合成/处理节点...]
+    ↓
+[保存节点...]
+    ↓
+[Upload to OSS] (自动上传所有生成的文件)
 ```
 
 ## 依赖列表
@@ -210,6 +250,9 @@ comfui-url-resource-loader/
 
 ## 常见问题
 
+### Q: 如何自动上传当前工作流生成的所有文件？
+A: 使用OSS_Upload节点，设置`file_source_mode="history_api"`，并将`prompt_id`留空。节点会自动检测并上传当前工作流的所有输出文件。
+
 ### Q: 加载URL资源超时怎么办？
 A: 检查网络连接，可在节点中调整超时时间参数（单位：秒）
 
@@ -220,7 +263,10 @@ A: 确保安装了CUDA版本的PyTorch，节点会自动检测并使用
 A: 在工作流前面使用"Clear Memory & VRAM"节点释放资源
 
 ### Q: OSS上传失败怎么办？
-A: 检查阿里云凭证是否正确，确保Bucket名称和Endpoint配置无误
+A: 检查阿里云凭证是否正确，确保Bucket名称和Endpoint配置无误。如果使用history_api模式，确保ComfyUI的History API可访问。
+
+### Q: history_api模式如何工作？
+A: 节点会调用ComfyUI的`/history`接口获取最新工作流执行记录，然后提取所有输出文件。如果提供了`prompt_id`，则获取指定工作流的输出。
 
 ## 许可证
 

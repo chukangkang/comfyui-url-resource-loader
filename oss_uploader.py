@@ -260,14 +260,21 @@ class OSS_Upload:
             return {}
     
     def _get_files_from_history_api(self, prompt_id: str, fallback_file_list: str) -> Dict[str, List[Dict]]:
-        """从ComfyUI的history API获取文件列表"""
+        """从ComfyUI的history API获取当前工作流生成的文件列表"""
+        
+        # 如果没有提供prompt_id，尝试获取最新的
         if not prompt_id:
-            print("No prompt_id provided, falling back to file_list")
-            return self._parse_file_list(fallback_file_list)
+            print("No prompt_id provided, trying to get latest from history API...")
+            prompt_id = self._get_latest_prompt_id()
+            
+            if not prompt_id:
+                print("Could not get latest prompt_id, falling back to file_list")
+                return self._parse_file_list(fallback_file_list)
         
         try:
-            # 调用ComfyUI history API
+            # 调用ComfyUI history API获取特定prompt的执行结果
             url = f"http://{self.comfyui_host}:{self.comfyui_port}/history/{prompt_id}"
+            print(f"Fetching workflow outputs from history API: {url}")
             response = requests.get(url, timeout=10)
             
             if response.status_code != 200:
@@ -276,10 +283,11 @@ class OSS_Upload:
             
             history_data = response.json()
             
-            # 解析history数据
+            # 解析history数据，提取所有输出文件
             files_info = {}
             if prompt_id in history_data:
                 outputs = history_data[prompt_id].get("outputs", {})
+                print(f"Found {len(outputs)} output nodes in workflow execution")
                 
                 for node_id, node_output in outputs.items():
                     # 处理images
@@ -287,45 +295,86 @@ class OSS_Upload:
                         if "images" not in files_info:
                             files_info["images"] = []
                         for img in node_output["images"]:
-                            files_info["images"].append({
+                            file_info = {
                                 "filename": img.get("filename"),
                                 "subfolder": img.get("subfolder", ""),
                                 "type": img.get("type", "output")
-                            })
+                            }
+                            files_info["images"].append(file_info)
+                            print(f"  Found image: {file_info['subfolder']}/{file_info['filename']}")
                     
-                    # 处理videos
+                    # 处理videos和gifs
                     if "videos" in node_output or "gifs" in node_output:
                         if "videos" not in files_info:
                             files_info["videos"] = []
                         videos = node_output.get("videos", []) + node_output.get("gifs", [])
                         for video in videos:
-                            files_info["videos"].append({
+                            file_info = {
                                 "filename": video.get("filename"),
                                 "subfolder": video.get("subfolder", ""),
                                 "type": video.get("type", "output")
-                            })
+                            }
+                            files_info["videos"].append(file_info)
+                            print(f"  Found video: {file_info['subfolder']}/{file_info['filename']}")
                     
                     # 处理audios
                     if "audios" in node_output:
                         if "audios" not in files_info:
                             files_info["audios"] = []
                         for audio in node_output["audios"]:
-                            files_info["audios"].append({
+                            file_info = {
                                 "filename": audio.get("filename"),
                                 "subfolder": audio.get("subfolder", ""),
                                 "type": audio.get("type", "output")
-                            })
+                            }
+                            files_info["audios"].append(file_info)
+                            print(f"  Found audio: {file_info['subfolder']}/{file_info['filename']}")
             
             # 如果没有从history获取到文件，回退到file_list
             if not files_info:
-                print("No files found in history API, falling back to file_list")
+                print("No files found in history API output, falling back to file_list")
                 return self._parse_file_list(fallback_file_list)
             
+            total_files = sum(len(v) for v in files_info.values())
+            print(f"Successfully retrieved {total_files} files from workflow execution (prompt_id: {prompt_id})")
             return files_info
             
         except Exception as e:
-            print(f"Failed to fetch from history API: {e}, falling back to file_list")
+            import traceback
+            print(f"Failed to fetch from history API: {e}")
+            print(traceback.format_exc())
+            print("Falling back to file_list")
             return self._parse_file_list(fallback_file_list)
+    
+    def _get_latest_prompt_id(self) -> Optional[str]:
+        """获取最新的prompt_id"""
+        try:
+            # 获取所有history
+            url = f"http://{self.comfyui_host}:{self.comfyui_port}/history"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code != 200:
+                return None
+            
+            history_data = response.json()
+            
+            # history_data是一个字典，key是prompt_id
+            # 我们需要找到最新的一个（通过timestamp或直接取第一个）
+            if not history_data:
+                return None
+            
+            # 获取所有prompt_id并按时间排序（假设返回的是有序的）
+            prompt_ids = list(history_data.keys())
+            if prompt_ids:
+                latest_prompt_id = prompt_ids[0]  # 通常第一个是最新的
+                print(f"Auto-detected latest prompt_id: {latest_prompt_id}")
+                return latest_prompt_id
+            
+            return None
+            
+        except Exception as e:
+            print(f"Failed to get latest prompt_id: {e}")
+            return None
     
     @staticmethod
     def _classify_file_type(ext: str) -> str:
