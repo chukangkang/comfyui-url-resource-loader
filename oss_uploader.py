@@ -434,8 +434,22 @@ class OSS_Upload:
                         })
                         continue
                     
-                    # 构建 OSS 路径
-                    oss_path = f"outputs/{task_id}/{filename}"
+                    # 构建 OSS 路径，包含文件类型子目录
+                    # 根据文件类型组织目录结构：outputs/{task_id}/{file_type}/{filename}
+                    # 例如：outputs/task123/audio/file.mp3, outputs/task123/images/img.png
+                    if file_type in ["images", "videos", "audios", "files"]:
+                        # 单数形式的文件类型名，去掉末尾的 's'
+                        type_folder = file_type.rstrip('s') if file_type != "audios" else "audio"
+                        if file_type == "images":
+                            type_folder = "image"
+                        elif file_type == "videos":
+                            type_folder = "video"
+                        elif file_type == "files":
+                            type_folder = "file"
+                        oss_path = f"outputs/{task_id}/{type_folder}/{filename}"
+                    else:
+                        # 未知类型，直接放在根目录
+                        oss_path = f"outputs/{task_id}/{filename}"
                     
                     # 获取文件大小和 Content-Type
                     file_size = os.path.getsize(local_path)
@@ -463,14 +477,21 @@ class OSS_Upload:
                         "filename": filename,
                         "oss_path": oss_path,
                         "size": file_size,
-                        "content_type": content_type
+                        "content_type": content_type,
+                        "file_type": file_type  # 添加文件类型信息，方便验证
                     })
                     
+                    print(f"✅ Uploaded: {filename} -> {oss_path} ({file_size} bytes)")
+                    
                 except Exception as e:
+                    import traceback
+                    error_msg = str(e)
                     failed_files.append({
                         "filename": filename,
-                        "reason": str(e)
+                        "reason": error_msg
                     })
+                    print(f"❌ Failed to upload {filename}: {error_msg}")
+                    print(traceback.format_exc())
         
         return {
             "status": "success" if not failed_files else "partial",

@@ -121,9 +121,19 @@ https://picsum.photos/800/600
   - `uploaded_count` - 成功上传文件数
   - `failed_count` - 失败文件数
   - `total_size` - 总上传大小（字节）
-  - `uploaded_files` - 已上传文件列表
+  - `uploaded_files` - 已上传文件列表（包含 `oss_path`、`file_type` 等信息）
   - `failed_files` - 失败文件列表
   - `timestamp` - 时间戳
+
+**OSS 文件路径结构：**
+
+文件会按类型自动组织到子目录中：
+- 图片：`outputs/{task_id}/image/{filename}`
+- 视频：`outputs/{task_id}/video/{filename}`
+- 音频：`outputs/{task_id}/audio/{filename}`
+- 其他：`outputs/{task_id}/file/{filename}`
+
+这种结构便于文件管理、分类和批量操作。
 
 **使用场景：**
 
