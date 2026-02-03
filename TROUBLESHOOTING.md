@@ -1,5 +1,36 @@
 # OSS_Upload 调试指南
 
+## 启用日志输出
+
+OSS_Upload 使用 Python 的 logging 模块，在 API 模式下也能正常输出日志。
+
+### ComfyUI 启动时配置
+
+在启动 ComfyUI 前设置日志级别：
+
+```python
+# main.py 或启动脚本中
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+```
+
+### 运行时配置
+
+```python
+import logging
+logging.getLogger("OSS_Upload").setLevel(logging.INFO)
+```
+
+### 查看日志
+
+日志会输出到：
+- **UI 模式**：ComfyUI 控制台和浏览器控制台
+- **API 模式**：ComfyUI 服务器日志（标准输出）
+- **Docker**：容器日志 `docker logs <container_id>`
+
 ## 问题：扫描找不到文件
 
 ### 症状

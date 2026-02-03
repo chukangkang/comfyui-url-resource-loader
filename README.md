@@ -217,6 +217,27 @@ oss_node = {
 **_metadata支持：**
 节点现在能够识别并处理file_list中的`_metadata`字段，优先使用metadata中的文件路径信息来定位文件。
 
+### 📋 日志输出
+
+OSS_Upload 节点使用 Python logging 模块输出日志，适用于 UI 和 API 模式：
+
+```python
+import logging
+
+# 启用详细日志
+logging.basicConfig(level=logging.INFO)
+
+# 或者只启用 OSS_Upload 的日志
+logging.getLogger("OSS_Upload").setLevel(logging.INFO)
+```
+
+日志包含：
+- 节点执行开始/结束标记
+- 输出目录内容列表
+- 文件扫描过程和匹配结果
+- 上传进度和结果
+- 错误和警告信息
+
 **环境变量：**
 - `COMFYUI_HOST` - ComfyUI服务地址，默认：127.0.0.1
 - `COMFYUI_PORT` - ComfyUI服务端口，默认：12800

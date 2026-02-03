@@ -11,9 +11,19 @@ import json
 import time
 import glob
 import requests
+import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
+
+# 配置日志
+logger = logging.getLogger("OSS_Upload")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('[%(name)s] %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 # 导入ComfyUI核心模块
 try:
@@ -56,7 +66,7 @@ class OSS_Upload:
         if not self.output_dir:
             self.output_dir = "/root/ComfyUI/output"  # 默认值
         
-        print(f"📁 OSS_Upload using output directory: {self.output_dir}")
+        logger.info(f"📁 OSS_Upload using output directory: {self.output_dir}")
         self.comfyui_host = os.getenv("COMFYUI_HOST", "127.0.0.1")
         self.comfyui_port = os.getenv("COMFYUI_PORT", "12800")
     
@@ -151,17 +161,17 @@ class OSS_Upload:
         """
         
         try:
-            print("\n" + "="*80)
-            print(f"🚀 OSS_Upload Node Execution Started")
-            print(f"   Task ID: {task_id}")
-            print(f"   Mode: {file_source_mode}")
-            print(f"   Output Dir: {self.output_dir}")
-            print(f"   Delete After Upload: {delete_after_upload}")
-            print("="*80 + "\n")
+            logger.info("\n" + "="*80)
+            logger.info(f"🚀 OSS_Upload Node Execution Started")
+            logger.info(f"   Task ID: {task_id}")
+            logger.info(f"   Mode: {file_source_mode}")
+            logger.info(f"   Output Dir: {self.output_dir}")
+            logger.info(f"   Delete After Upload: {delete_after_upload}")
+            logger.info("="*80 + "\n")
             
             # 如果使用 auto_scan 模式，等待一下让文件完全生成
             if file_source_mode == "auto_scan" and scan_delay > 0:
-                print(f"⏱️  Waiting {scan_delay}s for files to be fully generated...")
+                logger.info(f"⏱️  Waiting {scan_delay}s for files to be fully generated...")
                 time.sleep(scan_delay)
             if not HAVE_OSS2:
                 return (json.dumps({
@@ -186,17 +196,17 @@ class OSS_Upload:
                 
                 for attempt in range(max_retries):
                     if attempt > 0:
-                        print(f"🔄 Retry {attempt}/{max_retries - 1}: No files found, waiting {retry_delay}s and scanning again...")
+                        logger.info(f"🔄 Retry {attempt}/{max_retries - 1}: No files found, waiting {retry_delay}s and scanning again...")
                         time.sleep(retry_delay)
                     
                     files_info = self._scan_output_directory(auto_scan_pattern, scan_subdirs, min_file_time)
                     
                     if files_info:
-                        print(f"✅ Files found on attempt {attempt + 1}")
+                        logger.info(f"✅ Files found on attempt {attempt + 1}")
                         break
                     
                     if attempt < max_retries - 1:
-                        print(f"⚠️  No files found on attempt {attempt + 1}")
+                        logger.info(f"⚠️  No files found on attempt {attempt + 1}")
                 
             elif file_source_mode == "history_api":
                 files_info = self._get_files_from_history_api(prompt_id, file_list)
@@ -212,19 +222,19 @@ class OSS_Upload:
                     error_msg += f"\n  Scan delay: {scan_delay}s"
                     error_msg += "\n  Suggestion: Check if files are being generated and adjust scan_delay or min_file_time"
                 
-                print(f"❌ {error_msg}")
+                logger.info(f"❌ {error_msg}")
                 return (json.dumps({
                     "status": "error",
                     "message": error_msg
                 }),)
             
             # 执行上传
-            print(f"\n📤 Starting upload to OSS...")
-            print(f"   Bucket: {bucket_name}")
-            print(f"   Task ID: {task_id}")
-            print(f"   Total file types: {len(files_info)}")
+            logger.info(f"\n📤 Starting upload to OSS...")
+            logger.info(f"   Bucket: {bucket_name}")
+            logger.info(f"   Task ID: {task_id}")
+            logger.info(f"   Total file types: {len(files_info)}")
             for ftype, flist in files_info.items():
-                print(f"   - {ftype}: {len(flist)} files")
+                logger.info(f"   - {ftype}: {len(flist)} files")
             print()
             
             upload_result = self._upload_files(
@@ -236,21 +246,21 @@ class OSS_Upload:
                 timeout_seconds
             )
             
-            print(f"\n" + "="*80)
-            print(f"✅ OSS_Upload Node Execution Completed")
-            print(f"   Status: {upload_result.get('status')}")
-            print(f"   Uploaded: {upload_result.get('uploaded_count')} files")
-            print(f"   Failed: {upload_result.get('failed_count')} files")
-            print(f"   Total size: {upload_result.get('total_size')} bytes")
+            logger.info(f"\n" + "="*80)
+            logger.info(f"✅ OSS_Upload Node Execution Completed")
+            logger.info(f"   Status: {upload_result.get('status')}")
+            logger.info(f"   Uploaded: {upload_result.get('uploaded_count')} files")
+            logger.info(f"   Failed: {upload_result.get('failed_count')} files")
+            logger.info(f"   Total size: {upload_result.get('total_size')} bytes")
             if upload_result.get('uploaded_files'):
-                print(f"\n   Uploaded files:")
+                logger.info(f"\n   Uploaded files:")
                 for f in upload_result['uploaded_files']:
-                    print(f"   ✓ {f['filename']} -> {f['oss_path']}")
+                    logger.info(f"   ✓ {f['filename']} -> {f['oss_path']}")
             if upload_result.get('failed_files'):
-                print(f"\n   Failed files:")
+                logger.info(f"\n   Failed files:")
                 for f in upload_result['failed_files']:
-                    print(f"   ✗ {f['filename']}: {f['reason']}")
-            print("="*80 + "\n")
+                    logger.info(f"   ✗ {f['filename']}: {f['reason']}")
+            logger.info("="*80 + "\n")
             
             return (json.dumps(upload_result),)
         
@@ -305,7 +315,7 @@ class OSS_Upload:
             
             return processed_files
         except json.JSONDecodeError as e:
-            print(f"Failed to parse file_list: {e}")
+            logger.info(f"Failed to parse file_list: {e}")
             return {}
     
     def _scan_output_directory(self, pattern: str = "*.*", scan_subdirs: bool = True, min_file_time: float = 0.0) -> Dict[str, List[Dict]]:
@@ -321,25 +331,25 @@ class OSS_Upload:
         try:
             # 首先检查输出目录是否存在
             if not os.path.exists(self.output_dir):
-                print(f"❌ Output directory does not exist: {self.output_dir}")
+                logger.info(f"❌ Output directory does not exist: {self.output_dir}")
                 return {}
             
             # 列出输出目录的内容
             try:
                 dir_contents = os.listdir(self.output_dir)
-                print(f"📂 Output directory contents ({len(dir_contents)} items):")
+                logger.info(f"📂 Output directory contents ({len(dir_contents)} items):")
                 for item in sorted(dir_contents)[:20]:  # 只显示前20个
                     item_path = os.path.join(self.output_dir, item)
                     if os.path.isfile(item_path):
                         mtime = os.path.getmtime(item_path)
                         size = os.path.getsize(item_path)
-                        print(f"   📄 {item} ({size} bytes, {time.strftime('%H:%M:%S', time.localtime(mtime))})")
+                        logger.info(f"   📄 {item} ({size} bytes, {time.strftime('%H:%M:%S', time.localtime(mtime))})")
                     else:
-                        print(f"   📁 {item}/")
+                        logger.info(f"   📁 {item}/")
                 if len(dir_contents) > 20:
-                    print(f"   ... and {len(dir_contents) - 20} more items")
+                    logger.info(f"   ... and {len(dir_contents) - 20} more items")
             except Exception as e:
-                print(f"⚠️  Could not list directory contents: {e}")
+                logger.info(f"⚠️  Could not list directory contents: {e}")
             # 根据是否扫描子目录选择不同的glob模式
             if scan_subdirs:
                 search_pattern = os.path.join(self.output_dir, "**", pattern)
@@ -348,26 +358,26 @@ class OSS_Upload:
                 search_pattern = os.path.join(self.output_dir, pattern)
                 file_paths = glob.glob(search_pattern)
             
-            print(f"\n🔍 Scanning output directory: {self.output_dir}")
-            print(f"   Search pattern: {search_pattern}")
-            print(f"   Glob pattern: {pattern}, Recursive: {scan_subdirs}")
-            print(f"   Min file time: {min_file_time} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(min_file_time)) if min_file_time > 0 else 'No filter'})")
-            print(f"   Current time: {time.time()} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())})")
-            print(f"   Found {len(file_paths)} potential files/dirs\n")
+            logger.info(f"\n🔍 Scanning output directory: {self.output_dir}")
+            logger.info(f"   Search pattern: {search_pattern}")
+            logger.info(f"   Glob pattern: {pattern}, Recursive: {scan_subdirs}")
+            logger.info(f"   Min file time: {min_file_time} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(min_file_time)) if min_file_time > 0 else 'No filter'})")
+            logger.info(f"   Current time: {time.time()} ({time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())})")
+            logger.info(f"   Found {len(file_paths)} potential files/dirs\n")
             
             if len(file_paths) > 0:
-                print(f"📋 All paths found by glob:")
+                logger.info(f"📋 All paths found by glob:")
                 for i, p in enumerate(file_paths[:50], 1):  # 显示前50个
                     is_file = os.path.isfile(p)
                     if is_file:
                         mtime = os.path.getmtime(p)
                         size = os.path.getsize(p)
-                        print(f"   {i}. [FILE] {p}")
-                        print(f"      Size: {size} bytes, Modified: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))} ({mtime})")
+                        logger.info(f"   {i}. [FILE] {p}")
+                        logger.info(f"      Size: {size} bytes, Modified: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))} ({mtime})")
                     else:
-                        print(f"   {i}. [DIR] {p}")
+                        logger.info(f"   {i}. [DIR] {p}")
                 if len(file_paths) > 50:
-                    print(f"   ... and {len(file_paths) - 50} more")
+                    logger.info(f"   ... and {len(file_paths) - 50} more")
                 print()
             
             filtered_count = 0
@@ -386,12 +396,12 @@ class OSS_Upload:
                 if min_file_time > 0:
                     if file_mtime < min_file_time:
                         filtered_count += 1
-                        print(f"   ⏭️  Filtered (too old): {filename} (mtime: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mtime))})")
+                        logger.info(f"   ⏭️  Filtered (too old): {filename} (mtime: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mtime))})")
                         continue
                     else:
-                        print(f"   ✓ Matched: {filename} (mtime: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mtime))})")
+                        logger.info(f"   ✓ Matched: {filename} (mtime: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mtime))})")
                 else:
-                    print(f"   ✓ Found: {filename} (mtime: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mtime))})")
+                    logger.info(f"   ✓ Found: {filename} (mtime: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mtime))})")
                 
                 # 计算相对于output_dir的子文件夹路径
                 rel_path = os.path.relpath(os.path.dirname(file_path), self.output_dir)
@@ -411,31 +421,31 @@ class OSS_Upload:
                 })
             
             total_files = sum(len(v) for v in files_info.values())
-            print(f"\n📊 Scan Results:")
-            print(f"   Total matched files: {total_files}")
-            print(f"   Filtered (old): {filtered_count}")
-            print(f"   Skipped (not file): {skipped_count}")
+            logger.info(f"\n📊 Scan Results:")
+            logger.info(f"   Total matched files: {total_files}")
+            logger.info(f"   Filtered (old): {filtered_count}")
+            logger.info(f"   Skipped (not file): {skipped_count}")
             
             if total_files > 0:
-                print(f"\n📦 Files by type:")
+                logger.info(f"\n📦 Files by type:")
                 for file_type, file_list in files_info.items():
-                    print(f"   - {file_type}: {len(file_list)} files")
+                    logger.info(f"   - {file_type}: {len(file_list)} files")
                     for f in file_list[:5]:  # 只显示前5个
                         display_path = f"{f['subfolder']}/{f['filename']}" if f['subfolder'] else f['filename']
-                        print(f"     • {display_path}")
+                        logger.info(f"     • {display_path}")
                     if len(file_list) > 5:
-                        print(f"     ... and {len(file_list) - 5} more")
+                        logger.info(f"     ... and {len(file_list) - 5} more")
             else:
-                print(f"   ⚠️  No files found matching criteria!")
-                print(f"   Consider checking:")
-                print(f"     - Output directory exists and has files: {self.output_dir}")
-                print(f"     - File pattern is correct: {pattern}")
-                print(f"     - Time filter is not too strict: {min_file_time}")
+                logger.info(f"   ⚠️  No files found matching criteria!")
+                logger.info(f"   Consider checking:")
+                logger.info(f"     - Output directory exists and has files: {self.output_dir}")
+                logger.info(f"     - File pattern is correct: {pattern}")
+                logger.info(f"     - Time filter is not too strict: {min_file_time}")
             
             return files_info
         except Exception as e:
             import traceback
-            print(f"Failed to scan output directory: {e}")
+            logger.info(f"Failed to scan output directory: {e}")
             print(traceback.format_exc())
             return {}
     
@@ -444,21 +454,21 @@ class OSS_Upload:
         
         # 如果没有提供prompt_id，尝试获取最新的
         if not prompt_id:
-            print("No prompt_id provided, trying to get latest from history API...")
+            logger.info("No prompt_id provided, trying to get latest from history API...")
             prompt_id = self._get_latest_prompt_id()
             
             if not prompt_id:
-                print("Could not get latest prompt_id, falling back to file_list")
+                logger.info("Could not get latest prompt_id, falling back to file_list")
                 return self._parse_file_list(fallback_file_list)
         
         try:
             # 调用ComfyUI history API获取特定prompt的执行结果
             url = f"http://{self.comfyui_host}:{self.comfyui_port}/history/{prompt_id}"
-            print(f"Fetching workflow outputs from history API: {url}")
+            logger.info(f"Fetching workflow outputs from history API: {url}")
             response = requests.get(url, timeout=10)
             
             if response.status_code != 200:
-                print(f"History API returned status {response.status_code}, falling back to file_list")
+                logger.info(f"History API returned status {response.status_code}, falling back to file_list")
                 return self._parse_file_list(fallback_file_list)
             
             history_data = response.json()
@@ -467,7 +477,7 @@ class OSS_Upload:
             files_info = {}
             if prompt_id in history_data:
                 outputs = history_data[prompt_id].get("outputs", {})
-                print(f"Found {len(outputs)} output nodes in workflow execution")
+                logger.info(f"Found {len(outputs)} output nodes in workflow execution")
                 
                 for node_id, node_output in outputs.items():
                     # 处理images
@@ -481,7 +491,7 @@ class OSS_Upload:
                                 "type": img.get("type", "output")
                             }
                             files_info["images"].append(file_info)
-                            print(f"  Found image: {file_info['subfolder']}/{file_info['filename']}")
+                            logger.info(f"  Found image: {file_info['subfolder']}/{file_info['filename']}")
                     
                     # 处理videos和gifs
                     if "videos" in node_output or "gifs" in node_output:
@@ -495,7 +505,7 @@ class OSS_Upload:
                                 "type": video.get("type", "output")
                             }
                             files_info["videos"].append(file_info)
-                            print(f"  Found video: {file_info['subfolder']}/{file_info['filename']}")
+                            logger.info(f"  Found video: {file_info['subfolder']}/{file_info['filename']}")
                     
                     # 处理audios
                     if "audios" in node_output:
@@ -508,22 +518,22 @@ class OSS_Upload:
                                 "type": audio.get("type", "output")
                             }
                             files_info["audios"].append(file_info)
-                            print(f"  Found audio: {file_info['subfolder']}/{file_info['filename']}")
+                            logger.info(f"  Found audio: {file_info['subfolder']}/{file_info['filename']}")
             
             # 如果没有从history获取到文件，回退到file_list
             if not files_info:
-                print("No files found in history API output, falling back to file_list")
+                logger.info("No files found in history API output, falling back to file_list")
                 return self._parse_file_list(fallback_file_list)
             
             total_files = sum(len(v) for v in files_info.values())
-            print(f"Successfully retrieved {total_files} files from workflow execution (prompt_id: {prompt_id})")
+            logger.info(f"Successfully retrieved {total_files} files from workflow execution (prompt_id: {prompt_id})")
             return files_info
             
         except Exception as e:
             import traceback
-            print(f"Failed to fetch from history API: {e}")
+            logger.info(f"Failed to fetch from history API: {e}")
             print(traceback.format_exc())
-            print("Falling back to file_list")
+            logger.info("Falling back to file_list")
             return self._parse_file_list(fallback_file_list)
     
     def _get_latest_prompt_id(self) -> Optional[str]:
@@ -547,13 +557,13 @@ class OSS_Upload:
             prompt_ids = list(history_data.keys())
             if prompt_ids:
                 latest_prompt_id = prompt_ids[0]  # 通常第一个是最新的
-                print(f"Auto-detected latest prompt_id: {latest_prompt_id}")
+                logger.info(f"Auto-detected latest prompt_id: {latest_prompt_id}")
                 return latest_prompt_id
             
             return None
             
         except Exception as e:
-            print(f"Failed to get latest prompt_id: {e}")
+            logger.info(f"Failed to get latest prompt_id: {e}")
             return None
     
     @staticmethod
@@ -606,14 +616,14 @@ class OSS_Upload:
                     else:
                         local_path = os.path.join(self.output_dir, filename)
                     
-                    print(f"\n🔍 Processing: {filename}")
-                    print(f"   Local path: {local_path}")
-                    print(f"   Subfolder: '{subfolder}'")
-                    print(f"   File type: {file_type}")
+                    logger.info(f"\n🔍 Processing: {filename}")
+                    logger.info(f"   Local path: {local_path}")
+                    logger.info(f"   Subfolder: '{subfolder}'")
+                    logger.info(f"   File type: {file_type}")
                     
                     # 检查文件是否存在
                     if not os.path.exists(local_path):
-                        print(f"   ❌ File does not exist at: {local_path}")
+                        logger.info(f"   ❌ File does not exist at: {local_path}")
                         failed_files.append({
                             "filename": filename,
                             "reason": "File not found"
@@ -637,15 +647,15 @@ class OSS_Upload:
                         # 未知类型，直接放在根目录
                         oss_path = f"outputs/{task_id}/{filename}"
                     
-                    print(f"   OSS path: {oss_path}")
+                    logger.info(f"   OSS path: {oss_path}")
                     
                     # 获取文件大小和 Content-Type
                     file_size = os.path.getsize(local_path)
                     content_type = self._get_content_type(filename)
                     
-                    print(f"   File size: {file_size} bytes")
-                    print(f"   Content-Type: {content_type}")
-                    print(f"   Starting upload to bucket: {bucket_name}")
+                    logger.info(f"   File size: {file_size} bytes")
+                    logger.info(f"   Content-Type: {content_type}")
+                    logger.info(f"   Starting upload to bucket: {bucket_name}")
                     
                     # 上传文件
                     upload_start = time.time()
@@ -657,7 +667,7 @@ class OSS_Upload:
                             headers={"Content-Type": content_type}
                         )
                     upload_duration = time.time() - upload_start
-                    print(f"   Upload completed in {upload_duration:.2f}s")
+                    logger.info(f"   Upload completed in {upload_duration:.2f}s")
                     
                     total_size += file_size
                     
@@ -665,9 +675,9 @@ class OSS_Upload:
                     if delete_after_upload:
                         try:
                             os.remove(local_path)
-                            print(f"   Deleted local file: {local_path}")
+                            logger.info(f"   Deleted local file: {local_path}")
                         except Exception as del_err:
-                            print(f"   ⚠️  Could not delete local file: {del_err}")
+                            logger.info(f"   ⚠️  Could not delete local file: {del_err}")
                     
                     uploaded_files.append({
                         "filename": filename,
@@ -677,7 +687,7 @@ class OSS_Upload:
                         "file_type": file_type  # 添加文件类型信息，方便验证
                     })
                     
-                    print(f"✅ Uploaded: {filename} -> {oss_path} ({file_size} bytes)")
+                    logger.info(f"✅ Uploaded: {filename} -> {oss_path} ({file_size} bytes)")
                     
                 except Exception as e:
                     import traceback
@@ -686,7 +696,7 @@ class OSS_Upload:
                         "filename": filename,
                         "reason": error_msg
                     })
-                    print(f"❌ Failed to upload {filename}: {error_msg}")
+                    logger.info(f"❌ Failed to upload {filename}: {error_msg}")
                     print(traceback.format_exc())
         
         return {
