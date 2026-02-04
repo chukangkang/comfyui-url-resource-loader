@@ -119,19 +119,16 @@ class ClearMemoryDeepNode:
         # 清理ComfyUI的输出缓存
         self._clear_output_caches()
 
-        # 步骤3：内存泄漏检测 + 全局张量销毁
-        logger.info("\n🔹 步骤3: 内存泄漏检测 + 张量销毁")
+        # 步骤3：内存泄漏检测（仅检测，不销毁活跃张量）
+        logger.info("\n🔹 步骤3: 内存泄漏检测")
         leak_report = self._detect_memory_leaks()
         logger.info(f"   🔍 泄漏检测结果:")
         logger.info(f"      • GPU张量: {leak_report['gpu_tensors']} 个 ({leak_report['gpu_memory']:.3f}G)")
         logger.info(f"      • CPU张量: {leak_report['cpu_tensors']} 个 ({leak_report['cpu_memory']:.3f}G)")
         logger.info(f"      • 大对象(>100MB): {leak_report['large_objects']} 个")
         
-        tensor_count = self._destroy_globals_tensors()
-        if tensor_count > 0:
-            logger.info(f"   ✅ 已销毁 {tensor_count} 个全局残留张量")
-        else:
-            logger.info("   ℹ️  未发现残留张量")
+        # 不再销毁所有张量，避免破坏后续模型加载
+        logger.info("   ℹ️  跳过张量销毁，避免影响后续模型加载")
         
         # 额外清理：全局缓存和大对象
         cache_cleared = self._clear_global_caches()
@@ -464,69 +461,13 @@ class ClearMemoryDeepNode:
         return report
     
     def _destroy_globals_tensors(self):
-        """遍历全局，销毁所有残留张量（超强制版）"""
-        tensor_count = 0
-        large_tensors = []
-        
-        # 第一遍：收集所有张量引用
-        all_tensors = []
-        for obj in gc.get_objects():
-            try:
-                if isinstance(obj, torch.Tensor):
-                    all_tensors.append(obj)
-                    size_mb = obj.element_size() * obj.nelement() / 1024**2
-                    if size_mb > 10:  # 大于10MB的张量
-                        large_tensors.append(obj)
-            except:
-                continue
-        
-        # 第二遍：超强制清理
-        for obj in all_tensors:
-            try:
-                # 1. 先移动到CPU
-                if obj.is_cuda:
-                    obj.data = obj.data.cpu()
-                
-                # 2. detach并清空梯度
-                obj = obj.detach()
-                if obj.grad is not None:
-                    if obj.grad.is_cuda:
-                        obj.grad.data = obj.grad.data.cpu()
-                    obj.grad = None
-                
-                # 3. 清空存储（释放内存）
-                if hasattr(obj, 'storage'):
-                    try:
-                        storage = obj.storage()
-                        if storage is not None:
-                            storage.resize_(0)
-                    except:
-                        pass
-                
-                # 4. 重置为空张量
-                try:
-                    obj.data = torch.tensor([], dtype=obj.dtype)
-                except:
-                    pass
-                
-                # 5. 删除引用
-                del obj
-                tensor_count += 1
-            except:
-                continue
-        
-        # 清空列表
-        all_tensors.clear()
-        large_tensors.clear()
-        
-        # 第三遍：强制GC
-        gc.collect()
-        gc.collect()
-        
-        return tensor_count
+        """遍历全局，清理无引用的残留张量（安全版）"""
+        # 这个方法现在不再使用，因为会破坏后续模型加载
+        # 保留只是为了兼容性
+        return 0
     
     def _clear_global_caches(self):
-        """清理Python全局缓存和大对象（增强版）"""
+        """清理Python全局缓存和大对象（安全版）"""
         cleared_count = 0
         
         # 0. 静默 kornia 可选依赖提示（在执行前设置）
@@ -552,49 +493,10 @@ class ClearMemoryDeepNode:
         except:
             pass
         
-        # 2. 清理大对象（>100MB）
-        try:
-            large_objects = []
-            for obj in gc.get_objects():
-                try:
-                    # 检测大列表/字典
-                    if isinstance(obj, (list, dict, set)):
-                        size = sys.getsizeof(obj)
-                        if size > 100 * 1024 * 1024:  # >100MB
-                            large_objects.append(obj)
-                except:
-                    pass
-            
-            # 清理收集到的大对象
-            for obj in large_objects:
-                try:
-                    if isinstance(obj, (list, set)):
-                        obj.clear()
-                    elif isinstance(obj, dict):
-                        obj.clear()
-                    cleared_count += 1
-                except:
-                    pass
-        except:
-            pass
-        
-        # 3. 清理torch内部缓存
+        # 2. 清理torch内部缓存
         try:
             if hasattr(torch, '_C') and hasattr(torch._C, '_clear_cublas_benchmarks'):
                 torch._C._clear_cublas_benchmarks()
-        except:
-            pass
-        
-        # 4. 清理模块缓存
-        try:
-            # 清理__pycache__引用
-            for module_name in list(sys.modules.keys()):
-                if '__pycache__' in module_name or 'test' in module_name:
-                    try:
-                        del sys.modules[module_name]
-                        cleared_count += 1
-                    except:
-                        pass
         except:
             pass
         
