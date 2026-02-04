@@ -67,6 +67,34 @@ class ClearMemoryDeepNode:
         logger.info(f"   CPU 物理内存: {start_cpu:.3f}G")
         logger.info(f"   Python对象数: {len(gc.get_objects())}")
         logger.info("")
+        
+        # 步骤0：调用ComfyUI原生清理函数
+        logger.info("🔹 步骤0: ComfyUI原生内存管理")
+        try:
+            # 卸载所有模型
+            if hasattr(mm, 'unload_all_models'):
+                mm.unload_all_models()
+                logger.info("   ✅ 已调用 unload_all_models()")
+            
+            # 清理模型GC
+            if hasattr(mm, 'cleanup_models'):
+                mm.cleanup_models()
+                logger.info("   ✅ 已调用 cleanup_models()")
+            
+            # 清理current_loaded_models
+            if hasattr(mm, 'current_loaded_models'):
+                cleared_models = len(mm.current_loaded_models)
+                mm.current_loaded_models.clear()
+                if cleared_models > 0:
+                    logger.info(f"   ✅ 已清空 current_loaded_models: {cleared_models} 个")
+            
+            # soft_empty_cache
+            if hasattr(mm, 'soft_empty_cache'):
+                mm.soft_empty_cache(force=True)
+                logger.info("   ✅ 已调用 soft_empty_cache()")
+        except Exception as e:
+            logger.warning(f"   ⚠️  ComfyUI原生清理失败: {str(e)}")
+        logger.info("")
 
         # 步骤1：清空ComfyUI全局模型缓存，彻底销毁引用（含Buffer）
         logger.info("🔹 步骤1: ComfyUI模型 + Buffer完全释放")
@@ -169,6 +197,10 @@ class ClearMemoryDeepNode:
                         # 再次强制GC清理CPU内存
             gc.collect()
             gc.collect()
+            
+            # 再次调用ComfyUI的soft_empty_cache
+            if hasattr(mm, 'soft_empty_cache'):
+                mm.soft_empty_cache(force=True)
             
             # 计算GPU释放量
             end_gpu = torch.cuda.memory_allocated() / 1024**3
@@ -296,7 +328,7 @@ class ClearMemoryDeepNode:
         return stats
 
     def _clear_comfyui_models(self):
-        """清理ComfyUI所有模型缓存"""
+        """清理ComfyUI所有模型缓存（增强版）"""
         stats = {'count': 0, 'params': 0, 'buffers': 0, 'memory_freed': 0.0}
         
         # 清理loaded_models（可能是字典、列表或函数）
@@ -314,6 +346,12 @@ class ClearMemoryDeepNode:
                 stats['count'] = len(loaded_models)
                 for model_name in list(loaded_models.keys()):
                     model = loaded_models.pop(model_name)
+                    # 调用detach方法（如果存在）
+                    if hasattr(model, 'detach'):
+                        try:
+                            model.detach(unpatch_all=True)
+                        except:
+                            pass
                     model_stats = self._destroy_model(model)
                     stats['params'] += model_stats['params']
                     stats['buffers'] += model_stats['buffers']
@@ -321,6 +359,11 @@ class ClearMemoryDeepNode:
             elif isinstance(loaded_models, list):
                 stats['count'] = len(loaded_models)
                 for model in list(loaded_models):
+                    if hasattr(model, 'detach'):
+                        try:
+                            model.detach(unpatch_all=True)
+                        except:
+                            pass
                     model_stats = self._destroy_model(model)
                     stats['params'] += model_stats['params']
                     stats['buffers'] += model_stats['buffers']
@@ -331,10 +374,14 @@ class ClearMemoryDeepNode:
         if hasattr(mm, 'current_loaded_models'):
             current_models = mm.current_loaded_models
             if isinstance(current_models, list):
-                for model in list(current_models):
+                for loaded_model in list(current_models):
                     try:
-                        current_models.remove(model)
-                        self._destroy_model(model)
+                        # 调用model_unload
+                        if hasattr(loaded_model, 'model_unload'):
+                            loaded_model.model_unload()
+                        # 调用model.detach
+                        if hasattr(loaded_model, 'model') and hasattr(loaded_model.model, 'detach'):
+                            loaded_model.model.detach(unpatch_all=True)
                     except:
                         pass
         
