@@ -103,71 +103,73 @@ export COMFYUI_OUTPUT_DIR="/path/to/custom/output"
 
 ### 正常输出示例（详细版）
 
+使用 logging 模块后的输出格式：
+
 ```
-================================================================================
-🚀 OSS_Upload Node Execution Started
-   Task ID: 8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9
-   Mode: auto_scan
-   Output Dir: /root/ComfyUI/output
-   Delete After Upload: True
-================================================================================
+[OSS_Upload] ================================================================================
+[OSS_Upload] 🚀 OSS_Upload Node Execution Started
+[OSS_Upload]    Task ID: 8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9
+[OSS_Upload]    Mode: auto_scan
+[OSS_Upload]    Output Dir: /root/ComfyUI/output
+[OSS_Upload]    Delete After Upload: True
+[OSS_Upload] ================================================================================
 
-⏱️  Waiting 2.0s for files to be fully generated...
+[OSS_Upload] ⏱️  Waiting 2.0s for files to be fully generated...
 
-📂 Output directory contents (3 items):
-   📄 ComfyUI_00058_.mp3 (62863 bytes, 20:25:45)
-   📁 temp/
+[OSS_Upload] 📂 Output directory contents (3 items):
+[OSS_Upload]    📄 ComfyUI_00058_.mp3 (62863 bytes, 20:25:45)
+[OSS_Upload]    📁 temp/
 
-🔍 Scanning output directory: /root/ComfyUI/output
-   Search pattern: /root/ComfyUI/output/**/*.*
-   Glob pattern: *.*, Recursive: True
-   Min file time: 1738590340.0 (2026-02-03 20:25:40)
-   Current time: 1738590347.5 (2026-02-03 20:25:47)
-   Found 1 potential files/dirs
+[OSS_Upload] 🔍 Scanning output directory: /root/ComfyUI/output
+[OSS_Upload]    Search pattern: /root/ComfyUI/output/**/*.*
+[OSS_Upload]    Glob pattern: *.*, Recursive: True
+[OSS_Upload]    Min file time: 1738590340.0 (2026-02-03 20:25:40)
+[OSS_Upload]    Current time: 1738590347.5 (2026-02-03 20:25:47)
+[OSS_Upload]    Found 1 potential files/dirs
 
-📋 All paths found by glob:
-   1. [FILE] /root/ComfyUI/output/ComfyUI_00058_.mp3
-      Size: 62863 bytes, Modified: 2026-02-03 20:25:45 (1738590345.5)
+[OSS_Upload] 📋 All paths found by glob:
+[OSS_Upload]    1. [FILE] /root/ComfyUI/output/ComfyUI_00058_.mp3
+[OSS_Upload]       Size: 62863 bytes, Modified: 2026-02-03 20:25:45 (1738590345.5)
 
-   ✓ Matched: ComfyUI_00058_.mp3 (mtime: 2026-02-03 20:25:45)
+[OSS_Upload]    ✓ Matched: ComfyUI_00058_.mp3 (mtime: 2026-02-03 20:25:45)
 
-📊 Scan Results:
-   Total matched files: 1
-   Filtered (old): 0
-   Skipped (not file): 0
+[OSS_Upload] 📊 Scan Results:
+[OSS_Upload]    Total matched files: 1
+[OSS_Upload]    Filtered (old): 0
+[OSS_Upload]    Skipped (not file): 0
 
-📦 Files by type:
-   - audios: 1 files
-     • ComfyUI_00058_.mp3
+[OSS_Upload] 📦 Files by type:
+[OSS_Upload]    - audios: 1 files
+[OSS_Upload]      • ComfyUI_00058_.mp3
 
-📤 Starting upload to OSS...
-   Bucket: my-bucket
-   Task ID: 8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9
-   Total file types: 1
-   - audios: 1 files
+[OSS_Upload] 📤 Starting upload to OSS...
+[OSS_Upload]    Bucket: my-bucket
+[OSS_Upload]    Task ID: 8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9
+[OSS_Upload]    Total file types: 1
+[OSS_Upload]    - audios: 1 files
 
-🔍 Processing: ComfyUI_00058_.mp3
-   Local path: /root/ComfyUI/output/ComfyUI_00058_.mp3
-   Subfolder: ''
-   File type: audios
-   OSS path: outputs/8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9/audio/ComfyUI_00058_.mp3
-   File size: 62863 bytes
-   Content-Type: audio/mpeg
-   Starting upload to bucket: my-bucket
-   Upload completed in 0.23s
-   Deleted local file: /root/ComfyUI/output/ComfyUI_00058_.mp3
-✅ Uploaded: ComfyUI_00058_.mp3 -> outputs/8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9/audio/ComfyUI_00058_.mp3 (62863 bytes)
+[OSS_Upload] 🔍 Processing: ComfyUI_00058_.mp3
+[OSS_Upload]    Local path: /root/ComfyUI/output/ComfyUI_00058_.mp3
+[OSS_Upload]    Subfolder: ''
+[OSS_Upload]    File type: audios
+[OSS_Upload]    OSS path: outputs/8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9/audio/ComfyUI_00058_.mp3
+[OSS_Upload]    File size: 62863 bytes
+[OSS_Upload]    Content-Type: audio/mpeg
+[OSS_Upload]    Starting upload to bucket: my-bucket
+[OSS_Upload]    Upload completed in 0.23s
+[OSS_Upload]    Deleted local file: /root/ComfyUI/output/ComfyUI_00058_.mp3
+[OSS_Upload] ✅ Uploaded: ComfyUI_00058_.mp3 -> outputs/8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9/audio/ComfyUI_00058_.mp3 (62863 bytes)
 
-================================================================================
-✅ OSS_Upload Node Execution Completed
-   Status: success
-   Uploaded: 1 files
-   Failed: 0 files
-   Total size: 62863 bytes
+[OSS_Upload] ================================================================================
+[OSS_Upload] ✅ OSS_Upload Node Execution Completed
+[OSS_Upload]    Status: success
+[OSS_Upload]    Uploaded: 1 files
+[OSS_Upload]    Failed: 0 files
+[OSS_Upload]    Total size: 62863 bytes
 
-   Uploaded files:
-   ✓ ComfyUI_00058_.mp3 -> outputs/8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9/audio/ComfyUI_00058_.mp3
-================================================================================
+[OSS_Upload]    Uploaded files:
+[OSS_Upload]    ✓ ComfyUI_00058_.mp3 -> outputs/8e1dfca7-c55c-4ae3-86b2-7a79b83d07c9/audio/ComfyUI_00058_.mp3
+[OSS_Upload] ================================================================================
 ```
 
 ### 问题诊断
