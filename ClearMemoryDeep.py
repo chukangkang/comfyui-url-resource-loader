@@ -8,14 +8,6 @@ import logging
 from collections import defaultdict
 import comfy.model_management as mm
 
-# 静默 kornia 可选依赖提示
-try:
-    import kornia
-    if hasattr(kornia, 'config'):
-        kornia.config.lazyloader.installation_mode = 'auto'
-except:
-    pass
-
 # 配置日志
 logger = logging.getLogger("ClearMemoryDeep")
 if not logger.handlers:
@@ -425,50 +417,79 @@ class ClearMemoryDeepNode:
         return report
     
     def _destroy_globals_tensors(self):
-        """遍历全局，销毁所有残留张量（增强版）"""
+        """遍历全局，销毁所有残留张量（超强制版）"""
         tensor_count = 0
         large_tensors = []
         
-        # 第一遍：收集所有张量
+        # 第一遍：收集所有张量引用
+        all_tensors = []
         for obj in gc.get_objects():
             try:
                 if isinstance(obj, torch.Tensor):
+                    all_tensors.append(obj)
                     size_mb = obj.element_size() * obj.nelement() / 1024**2
-                    if size_mb > 10:  # 大于10MB的张量记录
+                    if size_mb > 10:  # 大于10MB的张量
                         large_tensors.append(obj)
             except:
                 continue
         
-        # 第二遍：激进清理所有张量
-        for obj in gc.get_objects():
+        # 第二遍：超强制清理
+        for obj in all_tensors:
             try:
-                if isinstance(obj, torch.Tensor):
-                    # 强制移动到CPU
-                    if obj.is_cuda:
-                        obj.data = obj.data.cpu()
-                    # detach并清空梯度
-                    obj = obj.detach()
-                    if obj.grad is not None:
-                        obj.grad = None
-                    # 强制清空数据（释放内存）
+                # 1. 先移动到CPU
+                if obj.is_cuda:
+                    obj.data = obj.data.cpu()
+                
+                # 2. detach并清空梯度
+                obj = obj.detach()
+                if obj.grad is not None:
+                    if obj.grad.is_cuda:
+                        obj.grad.data = obj.grad.data.cpu()
+                    obj.grad = None
+                
+                # 3. 清空存储（释放内存）
+                if hasattr(obj, 'storage'):
                     try:
-                        obj.data = torch.tensor([])
+                        storage = obj.storage()
+                        if storage is not None:
+                            storage.resize_(0)
                     except:
                         pass
-                    # 删除引用
-                    del obj
-                    tensor_count += 1
+                
+                # 4. 重置为空张量
+                try:
+                    obj.data = torch.tensor([], dtype=obj.dtype)
+                except:
+                    pass
+                
+                # 5. 删除引用
+                del obj
+                tensor_count += 1
             except:
                 continue
         
-        # 第三遍：再次GC确保完全清理
+        # 清空列表
+        all_tensors.clear()
+        large_tensors.clear()
+        
+        # 第三遍：强制GC
+        gc.collect()
         gc.collect()
         
         return tensor_count
     
     def _clear_global_caches(self):
-        """清理Python全局缓存和大对象"""
+        """清理Python全局缓存和大对象（增强版）"""
         cleared_count = 0
+        
+        # 0. 静默 kornia 可选依赖提示（在执行前设置）
+        try:
+            os.environ['KORNIA_INSTALL_MODE'] = 'auto'
+            import kornia
+            if hasattr(kornia, 'config'):
+                kornia.config.lazyloader.installation_mode = 'auto'
+        except:
+            pass
         
         # 1. 清理functools缓存
         try:
@@ -486,17 +507,25 @@ class ClearMemoryDeepNode:
         
         # 2. 清理大对象（>100MB）
         try:
+            large_objects = []
             for obj in gc.get_objects():
                 try:
                     # 检测大列表/字典
-                    if isinstance(obj, (list, dict)):
+                    if isinstance(obj, (list, dict, set)):
                         size = sys.getsizeof(obj)
                         if size > 100 * 1024 * 1024:  # >100MB
-                            if isinstance(obj, list):
-                                obj.clear()
-                            elif isinstance(obj, dict):
-                                obj.clear()
-                            cleared_count += 1
+                            large_objects.append(obj)
+                except:
+                    pass
+            
+            # 清理收集到的大对象
+            for obj in large_objects:
+                try:
+                    if isinstance(obj, (list, set)):
+                        obj.clear()
+                    elif isinstance(obj, dict):
+                        obj.clear()
+                    cleared_count += 1
                 except:
                     pass
         except:
@@ -506,6 +535,19 @@ class ClearMemoryDeepNode:
         try:
             if hasattr(torch, '_C') and hasattr(torch._C, '_clear_cublas_benchmarks'):
                 torch._C._clear_cublas_benchmarks()
+        except:
+            pass
+        
+        # 4. 清理模块缓存
+        try:
+            # 清理__pycache__引用
+            for module_name in list(sys.modules.keys()):
+                if '__pycache__' in module_name or 'test' in module_name:
+                    try:
+                        del sys.modules[module_name]
+                        cleared_count += 1
+                    except:
+                        pass
         except:
             pass
         
