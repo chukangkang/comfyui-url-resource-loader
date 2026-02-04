@@ -28,7 +28,8 @@ class ClearMemoryDeepNode:
             }
         }
 
-    RETURN_TYPES = ()  # 无输出，完美作为末尾节点
+    RETURN_TYPES = ("STRING",)  # 输出清理报告，可连接后续节点
+    RETURN_NAMES = ("report",)
     OUTPUT_NODE = True
     FUNCTION = "clear_memory_deep"
     CATEGORY = "utils/内存清理"
@@ -45,10 +46,6 @@ class ClearMemoryDeepNode:
         # 忽略输入参数，仅做兼容，不影响清理逻辑
         del any_input  # 主动删除输入引用，减少内存占用
         
-        logger.info("\n" + "="*100)
-        logger.info("🚀 ComfyUI内存泄漏排查 + Buffer全释放增强版")
-        logger.info("="*100)
-        
         # 记录清理前的内存状态
         start_time = time.time()
         start_gpu = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0
@@ -58,126 +55,45 @@ class ClearMemoryDeepNode:
         proc = psutil.Process(os.getpid())
         start_cpu = proc.memory_info().rss / 1024**3
         
-        logger.info(f"📊 清理前内存快照:")
-        if torch.cuda.is_available():
-            logger.info(f"   GPU 已分配: {start_gpu:.3f}G")
-            logger.info(f"   GPU 已保留: {start_gpu_reserved:.3f}G")
-            if start_gpu_cached > 0:
-                logger.info(f"   GPU 已缓存: {start_gpu_cached:.3f}G")
-        logger.info(f"   CPU 物理内存: {start_cpu:.3f}G")
-        logger.info(f"   Python对象数: {len(gc.get_objects())}")
-        logger.info("")
+        logger.info("[ClearMemory] 开始清理...")
         
         # 步骤0：调用ComfyUI原生清理函数
-        logger.info("🔹 步骤0: ComfyUI原生内存管理")
         try:
-            # 卸载所有模型
             if hasattr(mm, 'unload_all_models'):
                 mm.unload_all_models()
-                logger.info("   ✅ 已调用 unload_all_models()")
-            
-            # 清理模型GC
             if hasattr(mm, 'cleanup_models'):
                 mm.cleanup_models()
-                logger.info("   ✅ 已调用 cleanup_models()")
-            
-            # 清理current_loaded_models
             if hasattr(mm, 'current_loaded_models'):
-                cleared_models = len(mm.current_loaded_models)
                 mm.current_loaded_models.clear()
-                if cleared_models > 0:
-                    logger.info(f"   ✅ 已清空 current_loaded_models: {cleared_models} 个")
-            
-            # soft_empty_cache
             if hasattr(mm, 'soft_empty_cache'):
                 mm.soft_empty_cache(force=True)
-                logger.info("   ✅ 已调用 soft_empty_cache()")
-        except Exception as e:
-            logger.warning(f"   ⚠️  ComfyUI原生清理失败: {str(e)}")
-        logger.info("")
+        except:
+            pass
 
-        # 步骤1：清空ComfyUI全局模型缓存，彻底销毁引用（含Buffer）
-        logger.info("🔹 步骤1: ComfyUI模型 + Buffer完全释放")
-        model_stats = self._clear_comfyui_models()
-        if model_stats['count'] > 0:
-            logger.info(f"   ✅ 已清理 {model_stats['count']} 个模型")
-            logger.info(f"   ✅ 释放 {model_stats['params']} 个参数, {model_stats['buffers']} 个Buffer")
-            logger.info(f"   ✅ 释放内存约 {model_stats['memory_freed']:.3f}G")
-        else:
-            logger.info("   ℹ️  未发现已加载模型")
-
-        # 步骤2：清理ComfyUI所有缓存（model_management + 其他缓存）
-        logger.info("\n🔹 步骤2: ComfyUI深度缓存清理")
-        cache_stats = self._clear_comfyui_caches()
-        if cache_stats['total'] > 0:
-            logger.info(f"   ✅ 已清空 {cache_stats['total']} 个缓存区")
-            for cache_name, count in cache_stats['details'].items():
-                logger.info(f"      • {cache_name}: {count} 项")
-        else:
-            logger.info("   ℹ️  未找到可清理缓存")
-        
-        # 清理ComfyUI的输出缓存
+        # 步骤1-3：静默执行清理（不输出详细日志）
+        self._clear_comfyui_models()
+        self._clear_comfyui_caches()
         self._clear_output_caches()
-
-        # 步骤3：内存泄漏检测（仅检测，不销毁活跃张量）
-        logger.info("\n🔹 步骤3: 内存泄漏检测")
         leak_report = self._detect_memory_leaks()
-        logger.info(f"   🔍 泄漏检测结果:")
-        logger.info(f"      • GPU张量: {leak_report['gpu_tensors']} 个 ({leak_report['gpu_memory']:.3f}G)")
-        logger.info(f"      • CPU张量: {leak_report['cpu_tensors']} 个 ({leak_report['cpu_memory']:.3f}G)")
-        logger.info(f"      • 大对象(>100MB): {leak_report['large_objects']} 个")
-        
-        # 不再销毁所有张量，避免破坏后续模型加载
-        logger.info("   ℹ️  跳过张量销毁，避免影响后续模型加载")
-        
-        # 额外清理：全局缓存和大对象
-        cache_cleared = self._clear_global_caches()
-        if cache_cleared > 0:
-            logger.info(f"   ✅ 已清理 {cache_cleared} 个全局缓存/大对象")
+        self._clear_global_caches()
 
-        # 步骤4：Python激进GC回收（5轮 + 强制清理）
-        logger.info("\n🔹 步骤4: Python激进GC回收")
-        # 先禁用再启用，清理不可达对象
+        # 步骤4：Python GC回收（静默执行）
         gc.disable()
         gc.collect()
         gc.enable()
-        
-        # 5轮全代回收确保彻底
-        collected_total = 0
-        for i in range(5):
-            collected = gc.collect(2)
-            collected_total += collected
-            if i < 3:
-                logger.info(f"   第{i+1}轮回收(全代): {collected} 个对象")
-        
-        logger.info(f"   总计回收: {collected_total} 个对象")
-        
-        # 重置GC阈值为更激进的设置
-        gc.set_threshold(300, 3, 3)  # 更激进
-        logger.info(f"   ✅ GC阈值已重置为激进模式: (300, 3, 3)")
-        
-        # 最终对象数
-        final_objects = len(gc.get_objects())
-        logger.info(f"   当前对象数: {final_objects}")
+        for i in range(3):
+            gc.collect(2)
+        gc.set_threshold(300, 3, 3)
 
-        # 步骤5：VRAM强制同步 + 缓存池完全释放
-        logger.info("\n🔹 步骤5: VRAM强制同步清理")
+        # 步骤5：VRAM清理（静默执行）
         if torch.cuda.is_available():
-            # 多设备清理
             device_count = torch.cuda.device_count()
-            logger.info(f"   检测到 {device_count} 个CUDA设备")
-            
             for device_id in range(device_count):
                 with torch.cuda.device(device_id):
-                    logger.info(f"   清理设备 {device_id}...")
-                    # 强制同步
                     torch.cuda.synchronize()
-                    # 重置峰值内存统计
                     torch.cuda.reset_peak_memory_stats()
                     torch.cuda.reset_accumulated_memory_stats()
-                    # 清空缓存
                     torch.cuda.empty_cache()
-                    # IPC共享内存回收
                     torch.cuda.ipc_collect()
             
             # 全局缓存清理（3次确保彻底）
@@ -199,58 +115,29 @@ class ClearMemoryDeepNode:
             if hasattr(mm, 'soft_empty_cache'):
                 mm.soft_empty_cache(force=True)
             
-            # 计算GPU释放量
             end_gpu = torch.cuda.memory_allocated() / 1024**3
             end_gpu_reserved = torch.cuda.memory_reserved() / 1024**3
-            end_gpu_cached = torch.cuda.memory_cached() / 1024**3 if hasattr(torch.cuda, 'memory_cached') else 0
-            
             freed_gpu = start_gpu - end_gpu
             freed_reserved = start_gpu_reserved - end_gpu_reserved
-            freed_cached = start_gpu_cached - end_gpu_cached
-            
-            logger.info(f"   ✅ GPU已分配: {start_gpu:.3f}G → {end_gpu:.3f}G (释放 {freed_gpu:.3f}G)")
-            logger.info(f"   ✅ GPU已保留: {start_gpu_reserved:.3f}G → {end_gpu_reserved:.3f}G (释放 {freed_reserved:.3f}G)")
-            if freed_cached > 0:
-                logger.info(f"   ✅ GPU已缓存: {start_gpu_cached:.3f}G → {end_gpu_cached:.3f}G (释放 {freed_cached:.3f}G)")
-            
-            # 显示峰值内存
-            if hasattr(torch.cuda, 'max_memory_allocated'):
-                max_allocated = torch.cuda.max_memory_allocated() / 1024**3
-                logger.info(f"   📊 本次会话峰值内存: {max_allocated:.3f}G")
-        else:
-            logger.info("   ℹ️  CUDA不可用，跳过GPU清理")
 
-        # 步骤6：最终系统内存状态 + 泄漏评估
-        logger.info("\n🔹 步骤6: 清理后系统状态")
-        self._print_container_memory_status()
-        
-        # 计算总体释放量和耗时
+        # 计算最终结果
         end_cpu = proc.memory_info().rss / 1024**3
         freed_cpu = start_cpu - end_cpu
-        end_objects = len(gc.get_objects())
-        freed_objects = leak_report['total_objects'] - end_objects
         elapsed_time = time.time() - start_time
         
-        logger.info("\n" + "="*100)
-        logger.info("✅ 深度内存清理完成！")
-        logger.info("="*100)
-        logger.info(f"📊 清理总结:")
-        logger.info(f"   CPU物理内存: {start_cpu:.3f}G → {end_cpu:.3f}G (释放 {freed_cpu:+.3f}G)")
+        # 生成清理报告
+        report_lines = []
+        report_lines.append(f"清理完成 - 耗时: {elapsed_time:.1f}s")
+        report_lines.append(f"CPU: {start_cpu:.2f}G → {end_cpu:.2f}G (释放 {freed_cpu:+.2f}G)")
+        
         if torch.cuda.is_available():
-            logger.info(f"   GPU显存: {start_gpu:.3f}G → {end_gpu:.3f}G (释放 {freed_gpu:+.3f}G)")
-            logger.info(f"   GPU保留: {start_gpu_reserved:.3f}G → {end_gpu_reserved:.3f}G (释放 {freed_reserved:+.3f}G)")
-        logger.info(f"   Python对象: {leak_report['total_objects']} → {end_objects} (释放 {freed_objects})")
-        logger.info(f"   总耗时: {elapsed_time:.2f}秒")
+            report_lines.append(f"GPU: {start_gpu:.2f}G → {end_gpu:.2f}G (释放 {freed_gpu:+.2f}G)")
+            logger.info(f"[ClearMemory] 完成 - CPU释放: {freed_cpu:+.2f}G, GPU释放: {freed_gpu:+.2f}G, 耗时: {elapsed_time:.1f}s")
+        else:
+            logger.info(f"[ClearMemory] 完成 - CPU释放: {freed_cpu:+.2f}G, 耗时: {elapsed_time:.1f}s")
         
-        # 内存泄漏警告
-        if freed_gpu < 0.01 and start_gpu > 0.1:
-            logger.warning(f"   ⚠️  警告: GPU内存未释放，可能存在泄漏！")
-        if freed_cpu < 0.01 and start_cpu > 1.0:
-            logger.warning(f"   ⚠️  警告: CPU内存未释放，可能存在引用残留！")
-        
-        logger.info("="*100 + "\n")
-        
-        return ()
+        report = "\n".join(report_lines)
+        return (report,)
 
     def _destroy_model(self, model):
         """销毁模型对象，彻底删除参数/Buffer/张量引用"""
@@ -554,49 +441,7 @@ class ClearMemoryDeepNode:
         return container_info
     
     def _print_container_memory_status(self):
-        """打印容器内内存状态（区分容器和宿主机）"""
-        proc = psutil.Process(os.getpid())
-        mem_info = proc.memory_info()
-        mem_rss = mem_info.rss / 1024**3
-        mem_vms = mem_info.vms / 1024**3
-        
-        # 获取容器内存信息
-        container_info = self._get_container_memory_info()
-        
-        logger.info(f"   进程内存 (RSS): {mem_rss:.3f}G")
-        logger.info(f"   虚拟内存 (VMS): {mem_vms:.3f}G")
-        
-        # 如果在容器中，显示容器内存限制
-        if container_info:
-            if 'limit' in container_info and container_info['limit']:
-                usage = container_info.get('usage', mem_rss)
-                limit = container_info['limit']
-                percent = (usage / limit * 100) if limit > 0 else 0
-                logger.info(f"   容器内存: {usage:.2f}G / {limit:.2f}G (使用率 {percent:.1f}%)")
-                logger.info(f"   容器可用: {(limit - usage):.2f}G")
-            elif 'usage' in container_info:
-                logger.info(f"   容器内存使用: {container_info['usage']:.2f}G (无限制)")
-        
-        # 宿主机信息（仅供参考）
-        sys_mem = psutil.virtual_memory()
-        sys_mem_total = sys_mem.total / 1024**3
-        sys_mem_used = sys_mem.used / 1024**3
-        sys_mem_available = sys_mem.available / 1024**3
-        
-        logger.info(f"   宿主机内存: {sys_mem_used:.2f}G / {sys_mem_total:.2f}G (可用 {sys_mem_available:.2f}G)")
-        
-        # Swap信息
-        sys_swap = psutil.swap_memory()
-        if sys_swap.total > 0:
-            sys_swap_total = sys_swap.total / 1024**3
-            sys_swap_used = sys_swap.used / 1024**3
-            logger.info(f"   Swap内存: {sys_swap_used:.2f}G / {sys_swap_total:.2f}G")
-        
-        # CPU使用率
-        try:
-            cpu_percent = proc.cpu_percent(interval=0.1)
-            logger.info(f"   进程CPU: {cpu_percent:.1f}%")
-        except:
-            pass
+        """打印容器内内存状态（已废弃，保留接口兼容）"""
+        pass
 
 
