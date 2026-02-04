@@ -8,6 +8,14 @@ import logging
 from collections import defaultdict
 import comfy.model_management as mm
 
+# 静默 kornia 可选依赖提示
+try:
+    import kornia
+    if hasattr(kornia, 'config'):
+        kornia.config.lazyloader.installation_mode = 'auto'
+except:
+    pass
+
 # 配置日志
 logger = logging.getLogger("ClearMemoryDeep")
 if not logger.handlers:
