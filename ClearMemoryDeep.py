@@ -3,10 +3,9 @@ import gc
 import psutil
 import os
 import comfy.model_management as mm
-from comfy.nodes import BaseNode
 
 # 注册自定义节点：可介入/末尾执行版
-class ClearMemoryDeepNode(BaseNode):
+class ClearMemoryDeepNode:
     @classmethod
     def INPUT_TYPES(cls):
         # 新增可选输入：any类型（可接任意节点输出，不接也能运行）
