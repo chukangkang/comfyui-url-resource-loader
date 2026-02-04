@@ -287,25 +287,44 @@ class ClearMemoryDeepNode:
         """清理ComfyUI所有模型缓存"""
         stats = {'count': 0, 'params': 0, 'buffers': 0, 'memory_freed': 0.0}
         
-        # 清理loaded_models
+        # 清理loaded_models（可能是字典、列表或函数）
         if hasattr(mm, 'loaded_models'):
-            model_dict = mm.loaded_models
-            stats['count'] = len(model_dict)
-            for model_name in list(model_dict.keys()):
-                model = model_dict.pop(model_name)
-                model_stats = self._destroy_model(model)
-                stats['params'] += model_stats['params']
-                stats['buffers'] += model_stats['buffers']
-                stats['memory_freed'] += model_stats['memory']
+            loaded_models = mm.loaded_models
+            # 如果是函数，调用它
+            if callable(loaded_models):
+                try:
+                    loaded_models = loaded_models()
+                except:
+                    loaded_models = None
+            
+            # 检查是否是字典或列表
+            if isinstance(loaded_models, dict):
+                stats['count'] = len(loaded_models)
+                for model_name in list(loaded_models.keys()):
+                    model = loaded_models.pop(model_name)
+                    model_stats = self._destroy_model(model)
+                    stats['params'] += model_stats['params']
+                    stats['buffers'] += model_stats['buffers']
+                    stats['memory_freed'] += model_stats['memory']
+            elif isinstance(loaded_models, list):
+                stats['count'] = len(loaded_models)
+                for model in list(loaded_models):
+                    model_stats = self._destroy_model(model)
+                    stats['params'] += model_stats['params']
+                    stats['buffers'] += model_stats['buffers']
+                    stats['memory_freed'] += model_stats['memory']
+                loaded_models.clear()
         
         # 清理current_loaded_models
         if hasattr(mm, 'current_loaded_models'):
-            for model in list(mm.current_loaded_models):
-                try:
-                    mm.current_loaded_models.remove(model)
-                    self._destroy_model(model)
-                except:
-                    pass
+            current_models = mm.current_loaded_models
+            if isinstance(current_models, list):
+                for model in list(current_models):
+                    try:
+                        current_models.remove(model)
+                        self._destroy_model(model)
+                    except:
+                        pass
         
         return stats
     
@@ -314,16 +333,22 @@ class ClearMemoryDeepNode:
         stats = {'total': 0, 'details': {}}
         
         # model_management缓存（mm就是model_management模块）
-        cache_attrs = ['gpu_memory', 'cpu_memory', 'model_dtypes', 'models_memory', 'loaded_models']
+        cache_attrs = ['gpu_memory', 'cpu_memory', 'model_dtypes', 'models_memory']
         for attr in cache_attrs:
             if hasattr(mm, attr):
                 cache = getattr(mm, attr)
+                # 跳过函数类型
+                if callable(cache):
+                    continue
                 if hasattr(cache, 'clear'):
-                    count = len(cache) if hasattr(cache, '__len__') else 0
-                    if count > 0:
-                        stats['details'][attr] = count
-                        stats['total'] += 1
-                    cache.clear()
+                    try:
+                        count = len(cache) if hasattr(cache, '__len__') else 0
+                        if count > 0:
+                            stats['details'][attr] = count
+                            stats['total'] += 1
+                        cache.clear()
+                    except:
+                        pass
         
         # 其他可能的缓存
         if hasattr(mm, 'soft_empty_cache'):
