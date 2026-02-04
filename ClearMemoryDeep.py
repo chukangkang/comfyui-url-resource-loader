@@ -601,12 +601,3 @@ class ClearMemoryDeepNode:
             pass
 
 
-# 节点注册映射
-NODE_CLASS_MAPPINGS = {
-    "ClearMemoryDeepEnd": ClearMemoryDeepNode
-}
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "ClearMemoryDeepEnd": "🚀 深度内存清理 + 泄漏排查（增强版）"
-}
-
-__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
