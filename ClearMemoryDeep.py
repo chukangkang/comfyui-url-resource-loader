@@ -104,30 +104,36 @@ class ClearMemoryDeepNode:
             logger.info(f"   ✅ 已销毁 {tensor_count} 个全局残留张量")
         else:
             logger.info("   ℹ️  未发现残留张量")
+        
+        # 额外清理：全局缓存和大对象
+        cache_cleared = self._clear_global_caches()
+        if cache_cleared > 0:
+            logger.info(f"   ✅ 已清理 {cache_cleared} 个全局缓存/大对象")
 
-        # 步骤4：Python激进GC回收（3轮 + 不可达对象强制回收）
+        # 步骤4：Python激进GC回收（5轮 + 强制清理）
         logger.info("\n🔹 步骤4: Python激进GC回收")
-        # 强制禁用GC后再启用，清理不可达对象
+        # 先禁用再启用，清理不可达对象
         gc.disable()
+        gc.collect()
         gc.enable()
         
-        collected_1 = gc.collect(2)  # 强制全代回收
-        collected_2 = gc.collect(2)
-        collected_3 = gc.collect(2)
-        total_collected = collected_1 + collected_2 + collected_3
+        # 5轮全代回收确保彻底
+        collected_total = 0
+        for i in range(5):
+            collected = gc.collect(2)
+            collected_total += collected
+            if i < 3:
+                logger.info(f"   第{i+1}轮回收(全代): {collected} 个对象")
         
-        logger.info(f"   第1轮回收(全代): {collected_1} 个对象")
-        logger.info(f"   第2轮回收(全代): {collected_2} 个对象")
-        logger.info(f"   第3轮回收(全代): {collected_3} 个对象")
-        logger.info(f"   总计回收: {total_collected} 个对象")
+        logger.info(f"   总计回收: {collected_total} 个对象")
         
         # 重置GC阈值为更激进的设置
-        gc.set_threshold(500, 5, 5)
-        logger.info(f"   ✅ GC阈值已重置为激进模式: (500, 5, 5)")
+        gc.set_threshold(300, 3, 3)  # 更激进
+        logger.info(f"   ✅ GC阈值已重置为激进模式: (300, 3, 3)")
         
-        # 显示GC统计
-        gc_stats = gc.get_stats()
-        logger.info(f"   当前对象数: {len(gc.get_objects())}")
+        # 最终对象数
+        final_objects = len(gc.get_objects())
+        logger.info(f"   当前对象数: {final_objects}")
 
         # 步骤5：VRAM强制同步 + 缓存池完全释放
         logger.info("\n🔹 步骤5: VRAM强制同步清理")
@@ -157,6 +163,12 @@ class ClearMemoryDeepNode:
             
             # 最终同步
             torch.cuda.synchronize()
+                        # 再次强制GC清理CPU内存
+            gc.collect()
+            gc.collect()
+                        # 再次强制GC清理CPU内存
+            gc.collect()
+            gc.collect()
             
             # 计算GPU释放量
             end_gpu = torch.cuda.memory_allocated() / 1024**3
@@ -405,44 +417,181 @@ class ClearMemoryDeepNode:
         return report
     
     def _destroy_globals_tensors(self):
-        """遍历全局，销毁所有残留张量"""
+        """遍历全局，销毁所有残留张量（增强版）"""
         tensor_count = 0
+        large_tensors = []
+        
+        # 第一遍：收集所有张量
         for obj in gc.get_objects():
             try:
                 if isinstance(obj, torch.Tensor):
-                    # 强制移动到CPU再删除，避免CUDA内存残留
-                    if obj.device.type != 'cpu' and obj.is_cuda:
-                        obj = obj.cpu()
-                    obj.detach_()
+                    size_mb = obj.element_size() * obj.nelement() / 1024**2
+                    if size_mb > 10:  # 大于10MB的张量记录
+                        large_tensors.append(obj)
+            except:
+                continue
+        
+        # 第二遍：激进清理所有张量
+        for obj in gc.get_objects():
+            try:
+                if isinstance(obj, torch.Tensor):
+                    # 强制移动到CPU
+                    if obj.is_cuda:
+                        obj.data = obj.data.cpu()
+                    # detach并清空梯度
+                    obj = obj.detach()
+                    if obj.grad is not None:
+                        obj.grad = None
+                    # 强制清空数据（释放内存）
+                    try:
+                        obj.data = torch.tensor([])
+                    except:
+                        pass
+                    # 删除引用
                     del obj
                     tensor_count += 1
             except:
                 continue
+        
+        # 第三遍：再次GC确保完全清理
+        gc.collect()
+        
         return tensor_count
+    
+    def _clear_global_caches(self):
+        """清理Python全局缓存和大对象"""
+        cleared_count = 0
+        
+        # 1. 清理functools缓存
+        try:
+            import functools
+            # 清理lru_cache缓存
+            for obj in gc.get_objects():
+                try:
+                    if hasattr(obj, 'cache_clear') and callable(obj.cache_clear):
+                        obj.cache_clear()
+                        cleared_count += 1
+                except:
+                    pass
+        except:
+            pass
+        
+        # 2. 清理大对象（>100MB）
+        try:
+            for obj in gc.get_objects():
+                try:
+                    # 检测大列表/字典
+                    if isinstance(obj, (list, dict)):
+                        size = sys.getsizeof(obj)
+                        if size > 100 * 1024 * 1024:  # >100MB
+                            if isinstance(obj, list):
+                                obj.clear()
+                            elif isinstance(obj, dict):
+                                obj.clear()
+                            cleared_count += 1
+                except:
+                    pass
+        except:
+            pass
+        
+        # 3. 清理torch内部缓存
+        try:
+            if hasattr(torch, '_C') and hasattr(torch._C, '_clear_cublas_benchmarks'):
+                torch._C._clear_cublas_benchmarks()
+        except:
+            pass
+        
+        return cleared_count
 
+    def _get_container_memory_info(self):
+        """获取容器内存信息（cgroup v1/v2兼容）"""
+        container_info = {}
+        
+        # 尝试读取 cgroup v2（优先）
+        cgroup_v2_paths = {
+            'memory_max': '/sys/fs/cgroup/memory.max',
+            'memory_current': '/sys/fs/cgroup/memory.current',
+        }
+        
+        # 尝试读取 cgroup v1
+        cgroup_v1_paths = {
+            'memory_limit': '/sys/fs/cgroup/memory/memory.limit_in_bytes',
+            'memory_usage': '/sys/fs/cgroup/memory/memory.usage_in_bytes',
+        }
+        
+        # 检测 cgroup 版本
+        is_cgroup_v2 = os.path.exists(cgroup_v2_paths['memory_max'])
+        
+        if is_cgroup_v2:
+            # cgroup v2
+            try:
+                with open(cgroup_v2_paths['memory_max'], 'r') as f:
+                    limit = f.read().strip()
+                    if limit != 'max':
+                        container_info['limit'] = int(limit) / 1024**3
+                    else:
+                        container_info['limit'] = None
+                
+                with open(cgroup_v2_paths['memory_current'], 'r') as f:
+                    container_info['usage'] = int(f.read().strip()) / 1024**3
+            except:
+                pass
+        else:
+            # cgroup v1
+            try:
+                with open(cgroup_v1_paths['memory_limit'], 'r') as f:
+                    limit = int(f.read().strip())
+                    # 检查是否是无限制（通常是一个很大的数）
+                    if limit < 9 * 10**18:  # 9EB，实际限制
+                        container_info['limit'] = limit / 1024**3
+                    else:
+                        container_info['limit'] = None
+                
+                with open(cgroup_v1_paths['memory_usage'], 'r') as f:
+                    container_info['usage'] = int(f.read().strip()) / 1024**3
+            except:
+                pass
+        
+        return container_info
+    
     def _print_container_memory_status(self):
-        """打印容器内内存状态（无权限也能读）"""
+        """打印容器内内存状态（区分容器和宿主机）"""
         proc = psutil.Process(os.getpid())
         mem_info = proc.memory_info()
         mem_rss = mem_info.rss / 1024**3
         mem_vms = mem_info.vms / 1024**3
         
+        # 获取容器内存信息
+        container_info = self._get_container_memory_info()
+        
+        logger.info(f"   进程内存 (RSS): {mem_rss:.3f}G")
+        logger.info(f"   虚拟内存 (VMS): {mem_vms:.3f}G")
+        
+        # 如果在容器中，显示容器内存限制
+        if container_info:
+            if 'limit' in container_info and container_info['limit']:
+                usage = container_info.get('usage', mem_rss)
+                limit = container_info['limit']
+                percent = (usage / limit * 100) if limit > 0 else 0
+                logger.info(f"   容器内存: {usage:.2f}G / {limit:.2f}G (使用率 {percent:.1f}%)")
+                logger.info(f"   容器可用: {(limit - usage):.2f}G")
+            elif 'usage' in container_info:
+                logger.info(f"   容器内存使用: {container_info['usage']:.2f}G (无限制)")
+        
+        # 宿主机信息（仅供参考）
         sys_mem = psutil.virtual_memory()
         sys_mem_total = sys_mem.total / 1024**3
         sys_mem_used = sys_mem.used / 1024**3
         sys_mem_available = sys_mem.available / 1024**3
-        sys_mem_percent = sys_mem.percent
         
+        logger.info(f"   宿主机内存: {sys_mem_used:.2f}G / {sys_mem_total:.2f}G (可用 {sys_mem_available:.2f}G)")
+        
+        # Swap信息
         sys_swap = psutil.swap_memory()
-        sys_swap_total = sys_swap.total / 1024**3
-        sys_swap_used = sys_swap.used / 1024**3
-        sys_swap_percent = sys_swap.percent
-        
-        logger.info(f"   进程内存 (RSS): {mem_rss:.3f}G")
-        logger.info(f"   虚拟内存 (VMS): {mem_vms:.3f}G")
-        logger.info(f"   系统内存: {sys_mem_used:.2f}G / {sys_mem_total:.2f}G (使用率 {sys_mem_percent:.1f}%)")
-        logger.info(f"   可用内存: {sys_mem_available:.2f}G")
-        logger.info(f"   Swap内存: {sys_swap_used:.2f}G / {sys_swap_total:.2f}G ({sys_swap_percent:.1f}%)")
+        if sys_swap.total > 0:
+            sys_swap_total = sys_swap.total / 1024**3
+            sys_swap_used = sys_swap.used / 1024**3
+            logger.info(f"   Swap内存: {sys_swap_used:.2f}G / {sys_swap_total:.2f}G")
         
         # CPU使用率
         try:
