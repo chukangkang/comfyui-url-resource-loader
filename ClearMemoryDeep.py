@@ -1,7 +1,10 @@
+import os
+# 静默 kornia 依赖提示
+os.environ['KORNIA_INSTALL_MODE'] = 'auto'
+
 import torch
 import gc
 import psutil
-import os
 import sys
 import time
 import logging
