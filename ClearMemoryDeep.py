@@ -288,8 +288,8 @@ class ClearMemoryDeepNode:
         stats = {'count': 0, 'params': 0, 'buffers': 0, 'memory_freed': 0.0}
         
         # 清理loaded_models
-        if hasattr(mm, 'model_management') and hasattr(mm.model_management, 'loaded_models'):
-            model_dict = mm.model_management.loaded_models
+        if hasattr(mm, 'loaded_models'):
+            model_dict = mm.loaded_models
             stats['count'] = len(model_dict)
             for model_name in list(model_dict.keys()):
                 model = model_dict.pop(model_name)
@@ -313,11 +313,11 @@ class ClearMemoryDeepNode:
         """清理ComfyUI所有缓存"""
         stats = {'total': 0, 'details': {}}
         
-        # model_management缓存
+        # model_management缓存（mm就是model_management模块）
         cache_attrs = ['gpu_memory', 'cpu_memory', 'model_dtypes', 'models_memory', 'loaded_models']
         for attr in cache_attrs:
-            if hasattr(mm.model_management, attr):
-                cache = getattr(mm.model_management, attr)
+            if hasattr(mm, attr):
+                cache = getattr(mm, attr)
                 if hasattr(cache, 'clear'):
                     count = len(cache) if hasattr(cache, '__len__') else 0
                     if count > 0:
