@@ -52,12 +52,3 @@ class LoadImageFromURL:
         
         return (img_tensor, mask)
 
-# 节点映射（ComfyUI标准）
-NODE_CLASS_MAPPINGS = {
-    "LoadImageFromURL": LoadImageFromURL
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadImageFromURL": "🔌 Load Image From URL"
-}
-

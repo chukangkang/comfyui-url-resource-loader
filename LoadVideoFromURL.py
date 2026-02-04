@@ -169,13 +169,3 @@ class ComfyVideoURLLoader(io.ComfyNode):
         return True
 
 
-# ---------------------------
-# 兼容ComfyUI旧版节点映射（确保节点能被识别）
-# ---------------------------
-NODE_CLASS_MAPPINGS = {
-    "ComfyVideoURLLoader": ComfyVideoURLLoader
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "ComfyVideoURLLoader": "🎥 Load Video From URL"
-}
