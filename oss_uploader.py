@@ -760,11 +760,3 @@ class OSS_Upload:
         return content_types.get(ext, "application/octet-stream")
 
 
-# 节点导出
-NODE_CLASS_MAPPINGS = {
-    "OSS_Upload": OSS_Upload
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "OSS_Upload": "🔌 OSS Upload"
-}

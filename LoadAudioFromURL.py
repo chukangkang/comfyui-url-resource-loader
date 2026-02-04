@@ -119,11 +119,3 @@ class LoadAudioFromURL(io.ComfyNode):
                 raise RuntimeError(f"从URL加载音频失败：{error_detail}，URL={url}")
 
 
-# 兼容ComfyUI旧版节点映射（确保节点能被识别）
-NODE_CLASS_MAPPINGS = {
-    "LoadAudioFromURL": LoadAudioFromURL
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadAudioFromURL": "🔌 Load Audio From URL"
-}

@@ -1,142 +1,127 @@
 import torch
 import gc
-import multiprocessing
 import psutil
 import os
-import sys
-import subprocess
+import comfy.model_management as mm
+from comfy.nodes import BaseNode
 
-
-class ClearMemory:
-    """清理系统内存和GPU显存的ComfyUI节点"""
-    
+# 注册自定义节点：可介入/末尾执行版
+class ClearMemoryDeepNode(BaseNode):
     @classmethod
     def INPUT_TYPES(cls):
+        # 新增可选输入：any类型（可接任意节点输出，不接也能运行）
         return {
-            "required": {
-                "trigger": ("BOOLEAN", {"default": True}),
-            },
+            "required": {},
             "optional": {
-                "clear_cpu_memory": ("BOOLEAN", {"default": True}),
-                "clear_gpu_memory": ("BOOLEAN", {"default": True}),
-                "clear_subprocess_memory": ("BOOLEAN", {"default": True}),
+                "any_input": ("*", {}),  # 任意类型输入槽，支持所有数据类型
             }
         }
-    
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("status",)
-    FUNCTION = "clear_memory"
-    CATEGORY = "utils"
-    
-    def clear_memory(self, trigger, clear_cpu_memory=True, clear_gpu_memory=True, clear_subprocess_memory=True):
-        """
-        释放内存和显存
-        
-        Args:
-            trigger: 触发器（通常为True）
-            clear_cpu_memory: 是否清理CPU内存
-            clear_gpu_memory: 是否清理GPU显存
-            clear_subprocess_memory: 是否清理子进程共享内存
-            
-        Returns:
-            tuple: (状态信息字符串,)
-        """
-        messages = []
-        
-        try:
-            if clear_cpu_memory:
-                # 清理CPU内存
-                gc.collect()
-                messages.append("✓ CPU内存已清理")
-            
-            if clear_gpu_memory:
-                # 清理GPU显存
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-                    messages.append("✓ GPU显存已清理")
-                else:
-                    messages.append("⚠ 未检测到CUDA设备，跳过GPU清理")
-            
-            if clear_subprocess_memory:
-                # 清理子进程共享内存
-                self._clear_subprocess_shared_memory()
-                messages.append("✓ 子进程共享内存已清理")
-            
-            status = " | ".join(messages)
-            return (status,)
-            
-        except Exception as e:
-            error_msg = f"✗ 内存清理失败: {str(e)}"
-            return (error_msg,)
-    
-    def _clear_subprocess_shared_memory(self):
-        """清理所有ComfyUI共享内存（包括多进程共享内存、POSIX共享内存、信号量等）"""
-        try:
-            current_process = os.getpid()
-            
-            # 获取当前进程
+
+    RETURN_TYPES = ()  # 无输出，完美作为末尾节点
+    FUNCTION = "clear_memory_deep"
+    CATEGORY = "utils/内存清理"
+    TITLE = "深度内存清理（可介入/末尾执行）"
+    DESCRIPTION = "容器环境专用，支持工作流任意位置插入/末尾收尾\n可选接入任意节点输出，实现顺序执行；不接输入也可单独运行"
+
+    def clear_memory_deep(self, any_input=None):
+        """核心清理逻辑：兼容可选输入，无权限依赖"""
+        # 忽略输入参数，仅做兼容，不影响清理逻辑
+        del any_input  # 主动删除输入引用，减少内存占用
+        print("[内存清理-末尾执行] 开始深度清理（工作流收尾）...")
+        start_gpu = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0
+
+        # 步骤1：清空ComfyUI全局模型缓存，彻底销毁引用
+        if hasattr(mm, 'model_management') and hasattr(mm.model_management, 'loaded_models'):
+            model_count = len(mm.model_management.loaded_models)
+            for model_name in list(mm.model_management.loaded_models.keys()):
+                model = mm.model_management.loaded_models.pop(model_name)
+                self._destroy_model(model)
+            print(f"[内存清理-末尾执行] 已清空{model_count}个全局模型缓存")
+
+        # 步骤2：清理model_management附属缓存
+        for attr in ['gpu_memory', 'cpu_memory', 'model_dtypes']:
+            if hasattr(mm.model_management, attr):
+                getattr(mm.model_management, attr).clear()
+
+        # 步骤3：全局遍历销毁残留CUDA/CPU张量（第三方节点缓存也清理）
+        tensor_count = self._destroy_globals_tensors()
+        print(f"[内存清理-末尾执行] 已销毁{tensor_count}个全局残留张量")
+
+        # 步骤4：Python深度GC回收（处理循环引用，容器内关键）
+        gc.collect()
+        gc.collect()
+        gc.set_threshold(0)
+        gc.set_threshold(700, 10, 10)
+        print("[内存清理-末尾执行] Python GC深度回收完成")
+
+        # 步骤5：CUDA全维度缓存清理（无权限也生效，核心步骤）
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+            torch.cuda.synchronize()
+            torch.cuda.memory.empty_cache()
+            # 计算GPU释放量
+            end_gpu = torch.cuda.memory_allocated() / 1024**3
+            freed_gpu = start_gpu - end_gpu
+            print(f"[内存清理-末尾执行] GPU清理完成 - 释放{freed_gpu:.2f}G，剩余{end_gpu:.2f}G")
+
+        # 步骤6：打印容器内内存状态（仅展示，无操作）
+        self._print_container_memory_status()
+
+        print("[内存清理-末尾执行] 工作流收尾清理完成！无内存残留")
+        return ()
+
+    def _destroy_model(self, model):
+        """销毁模型对象，彻底删除张量引用"""
+        if model is None:
+            return
+        if hasattr(model, 'parameters'):
+            for p in model.parameters():
+                if p is not None:
+                    p.detach_()
+                    del p
+        if hasattr(model, 'buffers'):
+            for b in model.buffers():
+                if b is not None:
+                    b.detach_()
+                    del b
+        if hasattr(model, 'state_dict'):
             try:
-                parent = psutil.Process(current_process)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                return
-            
-            # 1. 清理子进程内存
-            try:
-                children = parent.children(recursive=True)
-                for child in children:
-                    try:
-                        if hasattr(child, 'memory_info'):
-                            gc.collect()
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ProcessLookupError):
-                        pass
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                sd = model.state_dict()
+                sd.clear()
+                del sd
+            except:
                 pass
-            
-            # 2. 清理multiprocessing的共享内存管理器
+        if hasattr(model, '__dict__'):
+            for k in list(model.__dict__.keys()):
+                attr = model.__dict__[k]
+                if isinstance(attr, torch.Tensor) or hasattr(attr, 'to'):
+                    del model.__dict__[k]
+        del model
+
+    def _destroy_globals_tensors(self):
+        """遍历全局，销毁所有残留张量"""
+        tensor_count = 0
+        for obj in gc.get_objects():
             try:
-                multiprocessing.Manager().shutdown()
-            except Exception:
-                pass
-            
-            # 3. 清理所有POSIX共享内存和信号量（Linux系统）
-            if sys.platform in ['linux', 'linux2']:
-                try:
-                    # 清理所有孤立的共享内存段
-                    subprocess.run(['ipcrm', '-a'], capture_output=True, timeout=5)
-                except Exception:
-                    pass
-                
-                try:
-                    # 查找并清理ComfyUI相关的IPC资源
-                    result = subprocess.run(['ipcs', '-m'], capture_output=True, text=True, timeout=5)
-                    for line in result.stdout.split('\n'):
-                        if 'python' in line.lower() or 'comfyui' in line.lower():
-                            try:
-                                parts = line.split()
-                                if len(parts) > 1:
-                                    shmid = parts[1]
-                                    subprocess.run(['ipcrm', '-m', shmid], capture_output=True, timeout=2)
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-            
-            # 4. 强制垃圾回收
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-        except Exception:
-            # 忽略任何清理失败，不影响主流程
-            pass
+                if isinstance(obj, torch.Tensor):
+                    obj.detach_()
+                    if obj.device.type != 'cpu':
+                        obj = obj.cpu()
+                    del obj
+                    tensor_count += 1
+            except:
+                continue
+        return tensor_count
 
+    def _print_container_memory_status(self):
+        """打印容器内内存状态（无权限也能读）"""
+        proc = psutil.Process(os.getpid())
+        mem_rss = proc.memory_info().rss / 1024**3
+        sys_mem = psutil.virtual_memory()
+        sys_mem_used = sys_mem.used / 1024**3
+        sys_swap = psutil.swap_memory()
+        sys_swap_used = sys_swap.used / 1024**3
+        print(f"[内存清理-末尾执行] 容器进程内存：{mem_rss:.2f}G")
+        print(f"[内存清理-末尾执行] 宿主机可见内存：{sys_mem_used:.2f}G | Swap：{sys_swap_used:.2f}G")
 
-# 节点映射和显示名称
-NODE_CLASS_MAPPINGS = {
-    "ClearMemory": ClearMemory,
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "ClearMemory": "🔄 Clear Memory & VRAM",
-}
