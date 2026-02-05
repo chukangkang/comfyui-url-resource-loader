@@ -77,22 +77,49 @@ class ClearMemoryDeepNode:
         # ============ 第一阶段：ComfyUI 模型卸载 ============
         logger.info("[ClearMemory] 阶段1: 卸载所有 ComfyUI 模型...")
         try:
-            # 卸载所有已加载的模型
+            # 1. 卸载所有已加载的模型
             if hasattr(mm, 'unload_all_models'):
                 mm.unload_all_models()
             
-            # 清理模型管理器
+            # 2. 清理模型管理器
             if hasattr(mm, 'cleanup_models'):
                 mm.cleanup_models()
             
-            # 强制清空当前加载的模型列表
+            # 3. 强制清空当前加载的模型列表
             if hasattr(mm, 'current_loaded_models'):
                 if isinstance(mm.current_loaded_models, list):
+                    # 先卸载每个模型
+                    for loaded_model in list(mm.current_loaded_models):
+                        try:
+                            if hasattr(loaded_model, 'model_unload'):
+                                loaded_model.model_unload()
+                        except:
+                            pass
                     mm.current_loaded_models.clear()
             
-            # 软清空缓存
+            # 4. 清理模型缓存字典
+            if hasattr(mm, 'models_loaded'):
+                try:
+                    if isinstance(mm.models_loaded, dict):
+                        mm.models_loaded.clear()
+                except:
+                    pass
+            
+            # 5. 重置模型内存计数
+            if hasattr(mm, 'vram_state'):
+                try:
+                    mm.vram_state = mm.VRAMState.DISABLED
+                except:
+                    pass
+            
+            # 6. 软清空缓存
             if hasattr(mm, 'soft_empty_cache'):
                 mm.soft_empty_cache(force=True)
+            
+            # 7. 硬清空缓存
+            if hasattr(mm, 'hard_empty_cache'):
+                mm.hard_empty_cache()
+                
         except Exception as e:
             logger.warning(f"⚠️ ComfyUI 模型卸载异常: {e}")
 
@@ -208,29 +235,42 @@ class ClearMemoryDeepNode:
         else:
             logger.info(f"[ClearMemory] ✅ 完成 - CPU释放: {freed_cpu:+.2f}G, 耗时: {elapsed_time:.1f}s")
         
-        logger.info("[ClearMemory] 🎉 ComfyUI 已恢复到刚启动状态！")
+        logger.info("[ClearMemory] 🎉 内存已彻底释放，下次工作流可正常执行！")
         
         report = "\n".join(report_lines)
         return (report,)
 
     def _destroy_model(self, model):
-        """销毁模型对象，彻底删除参数/Buffer/张量引用"""
+        """销毁模型对象，彻底删除参数/Buffer/张量引用（增强版）"""
         if model is None:
             return {'params': 0, 'buffers': 0, 'memory': 0.0}
         
         stats = {'params': 0, 'buffers': 0, 'memory': 0.0}
         
         try:
+            # 0. 先尝试将模型移到CPU（释放GPU）
+            try:
+                if hasattr(model, 'cpu'):
+                    model.cpu()
+            except:
+                pass
+            
             # 1. 清理parameters
             if hasattr(model, 'parameters'):
                 for p in list(model.parameters()):
                     if p is not None and isinstance(p, torch.Tensor):
                         stats['memory'] += p.element_size() * p.nelement() / 1024**3
                         stats['params'] += 1
-                        p.detach_()
+                        # 移到CPU
+                        try:
+                            p.cpu()
+                        except:
+                            pass
+                        # 分离并删除梯度
                         if p.grad is not None:
                             p.grad.detach_()
                             del p.grad
+                        p.detach_()
                         del p
             
             # 2. 清理buffers（BatchNorm等残留）
@@ -239,6 +279,10 @@ class ClearMemoryDeepNode:
                     if b is not None and isinstance(b, torch.Tensor):
                         stats['memory'] += b.element_size() * b.nelement() / 1024**3
                         stats['buffers'] += 1
+                        try:
+                            b.cpu()
+                        except:
+                            pass
                         b.detach_()
                         del b
             
@@ -247,10 +291,29 @@ class ClearMemoryDeepNode:
                 for name in list(model._buffers.keys()):
                     buf = model._buffers.pop(name, None)
                     if buf is not None and isinstance(buf, torch.Tensor):
+                        try:
+                            buf.cpu()
+                        except:
+                            pass
                         buf.detach_()
                         del buf
             
-            # 4. 清理state_dict
+            # 4. 清理_parameters
+            if hasattr(model, '_parameters'):
+                for name in list(model._parameters.keys()):
+                    param = model._parameters.pop(name, None)
+                    if param is not None and isinstance(param, torch.Tensor):
+                        try:
+                            param.cpu()
+                        except:
+                            pass
+                        if param.grad is not None:
+                            param.grad.detach_()
+                            del param.grad
+                        param.detach_()
+                        del param
+            
+            # 5. 清理state_dict
             if hasattr(model, 'state_dict'):
                 try:
                     sd = model.state_dict()
