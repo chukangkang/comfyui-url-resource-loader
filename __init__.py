@@ -3,6 +3,11 @@ from comfy_api.latest import ComfyExtension, io
 import sys
 import os
 
+# 禁用 kornia 的 basicsr 依赖检查（torch 2.8.0 不兼容 basicsr）
+os.environ['KORNIA_INSTALL_MODE'] = 'auto'
+os.environ['KORNIA_CHECK_DEPS'] = '0'
+os.environ['BASICSR_JIT'] = '0'
+
 # 将当前目录加入Python路径（确保导入自定义节点）
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -32,7 +37,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromURL": "🔌 Load Image From URL",
     "ComfyVideoURLLoader": "🔌 Load Video From URL",
     "LoadAudioFromURL": "🔌 Load Audio From URL",
-    "ClearMemoryDeepEnd": "� 深度内存清洗（恢复刚启动状态）"
+    "ClearMemoryDeepEnd": "🚀 深度内存清洗（超级激进模式）"
 }
 
 # ---------------------------

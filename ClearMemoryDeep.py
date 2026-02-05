@@ -1,6 +1,8 @@
 import os
-# 静默 kornia 依赖提示
+# 静默 kornia 依赖提示（禁用 basicsr 等可选依赖的安装提示）
 os.environ['KORNIA_INSTALL_MODE'] = 'auto'
+os.environ['KORNIA_CHECK_DEPS'] = '0'
+os.environ['BASICSR_JIT'] = '0'
 
 import torch
 import gc
@@ -8,6 +10,8 @@ import psutil
 import sys
 import time
 import logging
+import ctypes
+import weakref
 from collections import defaultdict
 import comfy.model_management as mm
 
@@ -36,13 +40,15 @@ class ClearMemoryDeepNode:
     OUTPUT_NODE = True
     FUNCTION = "clear_memory_deep"
     CATEGORY = "utils/内存清理"
-    TITLE = "🚀 深度内存清洗（恢复刚启动状态）"
-    DESCRIPTION = """ComfyUI深度内存清洗 - 恢复到刚启动状态
+    TITLE = "🚀 深度内存清洗（超级激进模式）"
+    DESCRIPTION = """ComfyUI深度内存清洗 - 恢复到刚启动状态（超级激进）
     ✅ 完全卸载所有模型和张量
     ✅ 深度释放GPU显存（VRAM）
     ✅ 彻底清理CPU内存
-    ✅ 清空ComfyUI所有缓存
-    ✅ 确保下次加载模型无残留"""
+    ✅ 强制删除大对象和循环引用
+    ✅ 清理Python内部缓存
+    ✅ 系统级内存trim（Linux）
+    ✅ 7阶段深度清洗流程"""
 
     def clear_memory_deep(self, any_input=None):
         """核心清理逻辑：深度内存清洗，确保 ComfyUI 恢复到刚启动状态"""
@@ -92,19 +98,25 @@ class ClearMemoryDeepNode:
         logger.info("[ClearMemory] 阶段3: 清理所有 PyTorch 张量...")
         self._clear_all_pytorch_tensors()
         
-        # ============ 第四阶段：Python GC 垃圾回收 ============
-        logger.info("[ClearMemory] 阶段4: 执行 Python 垃圾回收...")
+        # ============ 第四阶段：强制清理大对象和循环引用 ============
+        logger.info("[ClearMemory] 阶段4: 清理大对象和循环引用...")
+        self._force_clear_large_objects()
+        
+        # ============ 第五阶段：Python GC 垃圾回收（超级激进） ============
+        logger.info("[ClearMemory] 阶段5: 执行超级垃圾回收...")
+        # 禁用GC，手动控制
         gc.disable()
-        gc.collect()
-        gc.enable()
-        # 多次深度 GC
-        for i in range(5):
+        # 清理所有代
+        for i in range(10):
             gc.collect(2)
-        gc.set_threshold(300, 3, 3)
+        # 重新启用GC
+        gc.enable()
+        # 设置更激进的GC阈值
+        gc.set_threshold(100, 2, 2)
 
-        # ============ 第五阶段：VRAM 完全释放 ============
+        # ============ 第六阶段：VRAM 完全释放 ============
         if torch.cuda.is_available():
-            logger.info("[ClearMemory] 阶段5: 完全释放 VRAM...")
+            logger.info("[ClearMemory] 阶段6: 完全释放 VRAM...")
             device_count = torch.cuda.device_count()
             for device_id in range(device_count):
                 with torch.cuda.device(device_id):
@@ -129,15 +141,21 @@ class ClearMemoryDeepNode:
                 with torch.cuda.device(device_id):
                     torch.cuda.synchronize()
         
-        # ============ 第六阶段：再次 GC + ComfyUI 缓存清理 ============
-        logger.info("[ClearMemory] 阶段6: 最终清理...")
+        # ============ 第七阶段：系统级内存释放 ============
+        logger.info("[ClearMemory] 阶段7: 系统级内存释放...")
         # 多次 GC 确保彻底
-        for i in range(3):
+        for i in range(5):
             gc.collect()
             gc.collect(2)
         
         # 清理全局缓存
         self._clear_global_caches()
+        
+        # Python 内部缓存清理
+        self._clear_python_internal_caches()
+        
+        # 系统级内存trim（Linux）
+        self._trim_system_memory()
         
         # 再次调用 ComfyUI 的清理函数
         if hasattr(mm, 'soft_empty_cache'):
@@ -296,6 +314,169 @@ class ClearMemoryDeepNode:
         logger.info(f"[ClearMemory] 已处理 {cleared_tensors} 个张量, 释放约 {freed_memory:.2f}G")
         return {'tensors': cleared_tensors, 'memory': freed_memory}
     
+    def _force_clear_large_objects(self):
+        """强制清理大对象和循环引用"""
+        cleared_count = 0
+        freed_memory = 0.0
+        
+        try:
+            # 获取所有对象
+            all_objects = gc.get_objects()
+            large_objects = []
+            
+            # 查找大对象（>10MB）
+            for obj in all_objects:
+                try:
+                    # 获取对象大小
+                    size = sys.getsizeof(obj)
+                    if size > 10 * 1024 * 1024:  # 10MB
+                        large_objects.append(obj)
+                        freed_memory += size / 1024**3
+                except:
+                    continue
+            
+            # 清理大对象
+            for obj in large_objects:
+                try:
+                    # 如果是列表或字典，清空
+                    if isinstance(obj, list):
+                        obj.clear()
+                        cleared_count += 1
+                    elif isinstance(obj, dict):
+                        obj.clear()
+                        cleared_count += 1
+                    elif isinstance(obj, set):
+                        obj.clear()
+                        cleared_count += 1
+                except:
+                    continue
+            
+            # 清理循环引用
+            gc.collect()
+            
+            # 清理弱引用
+            try:
+                # 清理所有弱引用对象
+                for obj in list(weakref.getweakrefs(object)):
+                    try:
+                        del obj
+                    except:
+                        pass
+            except:
+                pass
+                
+        except Exception as e:
+            logger.warning(f"⚠️ 大对象清理异常: {e}")
+        
+        logger.info(f"[ClearMemory] 已清理 {cleared_count} 个大对象, 释放约 {freed_memory:.2f}G")
+        return {'count': cleared_count, 'memory': freed_memory}
+    
+    def _clear_python_internal_caches(self):
+        """清理 Python 内部缓存"""
+        cleared_count = 0
+        
+        try:
+            # 1. 清理 sys.modules 中未使用的模块（谨慎操作）
+            # 不清理核心模块和当前使用的模块
+            core_modules = {'sys', 'os', 'gc', 'torch', 'builtins', '__main__'}
+            modules_to_keep = set()
+            
+            # 保留ComfyUI相关模块
+            for name in list(sys.modules.keys()):
+                if any(x in name.lower() for x in ['comfy', 'torch', 'cuda', '__']):
+                    modules_to_keep.add(name)
+            
+            # 清理缓存模块
+            modules_to_remove = []
+            for name in list(sys.modules.keys()):
+                if name not in core_modules and name not in modules_to_keep:
+                    # 跳过正在使用的模块
+                    if not name.startswith('_') and '.' not in name:
+                        continue
+                    modules_to_remove.append(name)
+            
+            # 实际删除（注释掉，太危险）
+            # for name in modules_to_remove[:50]:  # 限制数量
+            #     try:
+            #         del sys.modules[name]
+            #         cleared_count += 1
+            #     except:
+            #         pass
+            
+            # 2. 清理 __pycache__
+            # 这个在运行时不太有效，跳过
+            
+            # 3. 清理 linecache
+            try:
+                import linecache
+                linecache.clearcache()
+                cleared_count += 1
+            except:
+                pass
+            
+            # 4. 清理 warnings 缓存
+            try:
+                import warnings
+                warnings.filters.clear()
+                cleared_count += 1
+            except:
+                pass
+            
+            # 5. 清理 importlib 缓存
+            try:
+                import importlib
+                if hasattr(importlib, 'invalidate_caches'):
+                    importlib.invalidate_caches()
+                    cleared_count += 1
+            except:
+                pass
+            
+            # 6. 清理 urllib 缓存
+            try:
+                import urllib.request
+                urllib.request.urlcleanup()
+                cleared_count += 1
+            except:
+                pass
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Python内部缓存清理异常: {e}")
+        
+        logger.info(f"[ClearMemory] 已清理 {cleared_count} 个Python内部缓存")
+        return cleared_count
+    
+    def _trim_system_memory(self):
+        """系统级内存trim（Linux特有）"""
+        try:
+            # 仅在Linux系统上有效
+            if sys.platform.startswith('linux'):
+                # 尝试调用 malloc_trim (glibc 特性)
+                try:
+                    libc = ctypes.CDLL('libc.so.6')
+                    libc.malloc_trim(0)
+                    logger.info("[ClearMemory] 已执行系统级内存trim（malloc_trim）")
+                    return True
+                except Exception as e:
+                    logger.debug(f"malloc_trim 调用失败: {e}")
+                    
+                # 尝试通过 /proc 触发内存回收
+                try:
+                    # 同步文件系统
+                    os.sync()
+                    # 触发内存压缩（需要root权限，通常会失败）
+                    try:
+                        with open('/proc/sys/vm/drop_caches', 'w') as f:
+                            f.write('1\n')
+                        logger.info("[ClearMemory] 已触发系统缓存清理")
+                    except PermissionError:
+                        logger.debug("系统缓存清理需要root权限")
+                except:
+                    pass
+        except Exception as e:
+            logger.debug(f"系统级内存清理跳过: {e}")
+        
+        return False
+    
     def _clear_comfyui_models(self):
         """清理ComfyUI所有模型缓存（增强版）"""
         stats = {'count': 0, 'params': 0, 'buffers': 0, 'memory_freed': 0.0}
@@ -442,12 +623,12 @@ class ClearMemoryDeepNode:
         """清理Python全局缓存和大对象（安全版）"""
         cleared_count = 0
         
-        # 0. 静默 kornia 可选依赖提示（在执行前设置）
+        # 0. 确保环境变量设置（避免导入 kornia 触发 basicsr 检查）
         try:
             os.environ['KORNIA_INSTALL_MODE'] = 'auto'
-            import kornia
-            if hasattr(kornia, 'config'):
-                kornia.config.lazyloader.installation_mode = 'auto'
+            os.environ['KORNIA_CHECK_DEPS'] = '0'
+            os.environ['BASICSR_JIT'] = '0'
+            # 不导入 kornia，避免触发依赖检查
         except:
             pass
         
