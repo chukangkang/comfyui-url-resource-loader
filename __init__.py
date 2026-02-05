@@ -1,7 +1,13 @@
-from typing_extensions import override
-from comfy_api.latest import ComfyExtension, io
 import sys
 import os
+
+# 在任何其他导入之前设置环境变量，阻止 kornia 检查 basicsr
+os.environ['KORNIA_INSTALL_MODE'] = 'skip'
+os.environ['KORNIA_LAZY_INSTALL'] = '0'
+os.environ['KORNIA_CHECK_DEPS'] = '0'
+
+from typing_extensions import override
+from comfy_api.latest import ComfyExtension, io
 
 # 将当前目录加入Python路径（确保导入自定义节点）
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

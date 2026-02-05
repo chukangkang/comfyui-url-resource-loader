@@ -10,7 +10,10 @@
 - **Load Audio From URL** - 从URL加载音频资源
 
 ### 🚀 内存管理节点
-- **深度内存清洗（激进+buff/cache）** - 8阶段终极清洗，完全卸载所有模型和张量，彻底释放 CPU/GPU 内存，清理系统 buff/cache
+- **深度内存清洗（激进+buff/cache）** - 8阶段终极清洗，完全卸载所有模型和张量，彻底释放 CPU/GPU 内存
+  - ✅ 容器内可用，无需特殊权限
+  - ✅ 自动调用 malloc_trim 归还内存
+  - 💡 如需清理宿主机 buff/cache，请查看 [容器内存清理指南](CONTAINER_MEMORY.md)
 
 ## 安装步骤
 

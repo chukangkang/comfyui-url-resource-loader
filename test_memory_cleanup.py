@@ -5,6 +5,13 @@
 """
 
 import os
+import sys
+
+# 在导入其他模块前设置环境变量
+os.environ['KORNIA_INSTALL_MODE'] = 'skip'
+os.environ['KORNIA_LAZY_INSTALL'] = '0'
+os.environ['KORNIA_CHECK_DEPS'] = '0'
+
 import psutil
 import torch
 import gc

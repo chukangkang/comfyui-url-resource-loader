@@ -1,8 +1,14 @@
 import os
+import sys
+
+# 在任何其他导入之前设置环境变量，阻止 kornia 检查 basicsr
+os.environ['KORNIA_INSTALL_MODE'] = 'skip'
+os.environ['KORNIA_LAZY_INSTALL'] = '0'
+os.environ['KORNIA_CHECK_DEPS'] = '0'
+
 import torch
 import gc
 import psutil
-import sys
 import time
 import logging
 import ctypes
@@ -415,15 +421,7 @@ class ClearMemoryDeepNode:
             # 2. 清理 __pycache__
             # 这个在运行时不太有效，跳过
             
-            # 3. 清理 linecache
-            try:
-                import linecache
-                linecache.clearcache()
-                cleared_count += 1
-            except:
-                pass
-            
-            # 4. 清理 warnings 缓存
+            # 3. 清理 warnings 缓存
             try:
                 import warnings
                 warnings.filters.clear()
@@ -431,7 +429,7 @@ class ClearMemoryDeepNode:
             except:
                 pass
             
-            # 5. 清理 importlib 缓存
+            # 4. 清理 importlib 缓存
             try:
                 import importlib
                 if hasattr(importlib, 'invalidate_caches'):
@@ -440,7 +438,7 @@ class ClearMemoryDeepNode:
             except:
                 pass
             
-            # 6. 清理 urllib 缓存
+            # 5. 清理 urllib 缓存
             try:
                 import urllib.request
                 urllib.request.urlcleanup()
@@ -455,98 +453,88 @@ class ClearMemoryDeepNode:
         return cleared_count
     
     def _trim_system_memory(self):
-        """系统级内存trim + buff/cache清理（超级激进）"""
+        """系统级内存trim（容器友好版本）"""
         freed_cache = False
         
         try:
-            # 仅在Linux系统上有效
             if sys.platform.startswith('linux'):
-                logger.info("[ClearMemory] 🔥 执行系统级缓存清理...")
+                logger.info("[ClearMemory] 🔥 执行系统级内存清理...")
                 
-                # 1. 同步文件系统（将所有脏数据写入磁盘）
+                # 1. 同步文件系统（容器内可用）
                 try:
                     os.sync()
-                    logger.debug("已同步文件系统")
-                except:
-                    pass
+                    logger.debug("✅ 已同步文件系统")
+                except Exception as e:
+                    logger.debug(f"文件系统同步失败: {e}")
                 
-                # 2. 尝试清理 pagecache（需要root权限）
-                drop_caches_levels = [1, 2, 3]  # 1=pagecache, 2=dentries+inodes, 3=全部
-                for level in drop_caches_levels:
-                    try:
-                        with open('/proc/sys/vm/drop_caches', 'w') as f:
-                            f.write(f'{level}\n')
-                        logger.info(f"✅ 已清理系统缓存 (level {level})")
-                        freed_cache = True
-                        time.sleep(0.1)  # 给系统一点时间处理
-                    except PermissionError:
-                        logger.warning("⚠️ 清理系统缓存需要root权限，尝试其他方法...")
-                        break
-                    except Exception as e:
-                        logger.debug(f"系统缓存清理失败: {e}")
-                        break
-                
-                # 3. 调用 malloc_trim (强制归还内存给操作系统)
+                # 2. malloc_trim - 强制归还内存给操作系统（容器内可用）
                 try:
                     libc = ctypes.CDLL('libc.so.6')
                     result = libc.malloc_trim(0)
                     if result:
-                        logger.info("✅ 已执行 malloc_trim，归还空闲内存给操作系统")
+                        logger.info("✅ malloc_trim 成功，已归还空闲内存给操作系统")
+                        freed_cache = True
                     else:
                         logger.debug("malloc_trim 未释放额外内存")
                 except Exception as e:
-                    logger.debug(f"malloc_trim 调用失败: {e}")
+                    logger.debug(f"malloc_trim 失败: {e}")
                 
-                # 4. 触发内存压缩（compact_memory）
+                # 3. 尝试清理系统缓存（通常在容器内没有权限，会静默失败）
                 try:
-                    with open('/proc/sys/vm/compact_memory', 'w') as f:
-                        f.write('1\n')
-                    logger.info("✅ 已触发内存压缩")
+                    # 先尝试 cgroup v2
+                    cgroup_v2_memory = '/sys/fs/cgroup/memory.reclaim'
+                    if os.path.exists(cgroup_v2_memory):
+                        with open(cgroup_v2_memory, 'w') as f:
+                            f.write('0\n')  # 回收所有可回收的内存
+                        logger.info("✅ 已触发 cgroup v2 内存回收")
+                        freed_cache = True
                 except:
                     pass
                 
-                # 5. 如果没有root权限，尝试通过创建内存压力触发缓存清理
-                if not freed_cache:
-                    logger.info("🔄 尝试通过内存压力触发缓存清理...")
-                    try:
-                        # 获取可用内存
-                        mem = psutil.virtual_memory()
-                        available_mb = mem.available / 1024 / 1024
-                        
-                        # 分配一大块内存再立即释放，触发系统清理缓存
-                        if available_mb > 1024:  # 至少有1GB可用
-                            # 分配约50%的可用内存
-                            alloc_mb = int(available_mb * 0.5)
-                            logger.info(f"分配 {alloc_mb}MB 内存触发清理...")
-                            
-                            # 创建大块内存
-                            dummy = bytearray(alloc_mb * 1024 * 1024)
-                            # 写入数据确保真正分配
-                            for i in range(0, len(dummy), 1024*1024):
-                                dummy[i] = 1
-                            # 立即删除
-                            del dummy
-                            
-                            # 强制GC
-                            gc.collect()
-                            gc.collect(2)
-                            
-                            # 再次调用 malloc_trim
-                            try:
-                                libc = ctypes.CDLL('libc.so.6')
-                                libc.malloc_trim(0)
-                            except:
-                                pass
-                            
-                            logger.info("✅ 内存压力清理完成")
-                    except Exception as e:
-                        logger.debug(f"内存压力清理失败: {e}")
+                # 尝试 drop_caches（容器内通常没权限）
+                try:
+                    with open('/proc/sys/vm/drop_caches', 'w') as f:
+                        f.write('3\n')
+                    logger.info("✅ 已清理系统缓存 (drop_caches)")
+                    freed_cache = True
+                except PermissionError:
+                    logger.debug("⚠️ 容器内无权限清理系统缓存，这是正常的")
+                    logger.info("💡 提示: 如需清理宿主机缓存，请在宿主机运行: sudo bash clear_system_cache.sh")
+                except Exception as e:
+                    logger.debug(f"系统缓存清理跳过: {e}")
                 
-                return True
+                # 4. 小量内存分配触发整理（安全版）
+                if not freed_cache:
+                    logger.info("🔄 使用小量内存分配触发整理...")
+                    try:
+                        # 只分配50MB，安全且不会触发OOM
+                        alloc_mb = 50
+                        dummy = bytearray(alloc_mb * 1024 * 1024)
+                        # 写入确保分配
+                        for i in range(0, len(dummy), 4096):
+                            dummy[i] = 1
+                        del dummy
+                        
+                        # 强制GC
+                        gc.collect()
+                        gc.collect(2)
+                        
+                        # 再次 malloc_trim
+                        try:
+                            libc = ctypes.CDLL('libc.so.6')
+                            libc.malloc_trim(0)
+                            logger.info("✅ 内存整理完成")
+                        except:
+                            pass
+                            
+                    except Exception as e:
+                        logger.debug(f"内存整理失败: {e}")
+                
+                return freed_cache or True  # 至少同步和malloc_trim是可用的
         except Exception as e:
             logger.debug(f"系统级内存清理跳过: {e}")
         
-        return freed_cache
+        return False
     
     def _clear_comfyui_models(self):
         """清理ComfyUI所有模型缓存（增强版）"""

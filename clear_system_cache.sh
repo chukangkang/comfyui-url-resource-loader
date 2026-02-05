@@ -1,15 +1,16 @@
 #!/bin/bash
-# 系统缓存清理脚本（需要 root 权限）
-# 用于清理 Linux 系统的 buff/cache
+# 宿主机系统缓存清理脚本（需要在宿主机运行，需要 root 权限）
+# 用于清理 Linux 系统的 buff/cache，可以影响到容器内存使用
 
 echo "=========================================="
-echo "系统缓存清理工具"
+echo "宿主机系统缓存清理工具"
+echo "（适用于清理容器占用的 buff/cache）"
 echo "=========================================="
 
 # 检查是否有 root 权限
 if [ "$EUID" -ne 0 ]; then 
     echo "❌ 错误: 此脚本需要 root 权限运行"
-    echo "请使用: sudo bash clear_system_cache.sh"
+    echo "请在宿主机上使用: sudo bash clear_system_cache.sh"
     exit 1
 fi
 
@@ -19,21 +20,32 @@ free -h
 echo ""
 echo "🔄 同步文件系统..."
 sync
+echo "✅ 文件系统已同步"
 
-echo "🧹 清理 pagecache (level 1)..."
+echo ""
+echo "🧹 清理 pagecache..."
 echo 1 > /proc/sys/vm/drop_caches
 sleep 1
+echo "✅ pagecache 已清理"
 
-echo "🧹 清理 dentries 和 inodes (level 2)..."
+echo "🧹 清理 dentries 和 inodes..."
 echo 2 > /proc/sys/vm/drop_caches
 sleep 1
+echo "✅ dentries 和 inodes 已清理"
 
-echo "🧹 清理所有缓存 (level 3)..."
+echo "🧹 清理所有缓存（pagecache + dentries + inodes）..."
 echo 3 > /proc/sys/vm/drop_caches
 sleep 1
+echo "✅ 所有系统缓存已清理"
 
+echo ""
 echo "💾 触发内存压缩..."
-echo 1 > /proc/sys/vm/compact_memory 2>/dev/null || echo "⚠️ 内存压缩不可用"
+if [ -f /proc/sys/vm/compact_memory ]; then
+    echo 1 > /proc/sys/vm/compact_memory
+    echo "✅ 内存压缩已触发"
+else
+    echo "⚠️ 内存压缩不可用（内核版本较旧）"
+fi
 
 echo ""
 echo "✅ 系统缓存清理完成！"
@@ -43,6 +55,10 @@ free -h
 
 echo ""
 echo "=========================================="
-echo "提示: 此脚本可以配合 ComfyUI 的内存清理节点使用"
-echo "在 ComfyUI 执行内存清理后，运行此脚本可进一步降低内存使用"
+echo "使用说明:"
+echo "1. 在 ComfyUI 中执行深度内存清理节点"
+echo "2. 在宿主机运行此脚本: sudo bash clear_system_cache.sh"
+echo "3. 这样可以最大化降低容器的内存使用率"
+echo ""
+echo "注意: 此脚本必须在宿主机上运行，容器内无权限"
 echo "=========================================="
