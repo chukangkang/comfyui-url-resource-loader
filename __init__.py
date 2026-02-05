@@ -1,10 +1,17 @@
 import sys
 import os
+from types import ModuleType
 
-# 在任何其他导入之前设置环境变量，阻止 kornia 检查 basicsr
-os.environ['KORNIA_INSTALL_MODE'] = 'skip'
-os.environ['KORNIA_LAZY_INSTALL'] = '0'
-os.environ['KORNIA_CHECK_DEPS'] = '0'
+# 完全阻止 kornia 加载，避免 basicsr 提示
+class _FakeKornia(ModuleType):
+    def __init__(self):
+        super().__init__('kornia')
+    def __getattr__(self, name):
+        return _FakeKornia()
+
+sys.modules['kornia'] = _FakeKornia()
+sys.modules['kornia.config'] = _FakeKornia()
+sys.modules['kornia.lazyloader'] = _FakeKornia()
 
 from typing_extensions import override
 from comfy_api.latest import ComfyExtension, io
@@ -38,7 +45,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromURL": "🔌 Load Image From URL",
     "ComfyVideoURLLoader": "🔌 Load Video From URL",
     "LoadAudioFromURL": "🔌 Load Audio From URL",
-    "ClearMemoryDeepEnd": "🚀 深度内存清洗（激进+buff/cache）"
+    "ClearMemoryDeepEnd": "🚀 深度内存清洗（容器优化）"
 }
 
 # ---------------------------

@@ -1,10 +1,18 @@
 import os
 import sys
+from types import ModuleType
 
-# 在任何其他导入之前设置环境变量，阻止 kornia 检查 basicsr
-os.environ['KORNIA_INSTALL_MODE'] = 'skip'
-os.environ['KORNIA_LAZY_INSTALL'] = '0'
-os.environ['KORNIA_CHECK_DEPS'] = '0'
+# 完全阻止 kornia 加载，避免 basicsr 提示
+class _FakeKornia(ModuleType):
+    def __init__(self):
+        super().__init__('kornia')
+    def __getattr__(self, name):
+        return _FakeKornia()
+
+if 'kornia' not in sys.modules:
+    sys.modules['kornia'] = _FakeKornia()
+    sys.modules['kornia.config'] = _FakeKornia()
+    sys.modules['kornia.lazyloader'] = _FakeKornia()
 
 import torch
 import gc
@@ -41,16 +49,14 @@ class ClearMemoryDeepNode:
     OUTPUT_NODE = True
     FUNCTION = "clear_memory_deep"
     CATEGORY = "utils/内存清理"
-    TITLE = "🚀 深度内存清洗（超级激进+buff/cache清理）"
-    DESCRIPTION = """ComfyUI深度内存清洗 - 恢复到刚启动状态（超级激进）
+    TITLE = "🚀 深度内存清洗（容器优化版）"
+    DESCRIPTION = """ComfyUI深度内存清洗 - 8阶段清洗流程（容器优化）
     ✅ 完全卸载所有模型和张量
     ✅ 深度释放GPU显存（VRAM）
     ✅ 彻底清理CPU内存
     ✅ 强制删除大对象和循环引用
-    ✅ 清理Python内部缓存
-    ✅ 系统级buff/cache清理（drop_caches）
-    ✅ malloc_trim强制归还内存
-    ✅ 8阶段终极清洗流程"""
+    ✅ malloc_trim 归还内存给系统
+    ✅ 容器内安全运行"""
 
     def clear_memory_deep(self, any_input=None):
         """核心清理逻辑：深度内存清洗，确保 ComfyUI 恢复到刚启动状态"""
@@ -152,9 +158,6 @@ class ClearMemoryDeepNode:
         
         # 清理全局缓存
         self._clear_global_caches()
-        
-        # Python 内部缓存清理
-        self._clear_python_internal_caches()
         
         # 系统级内存trim（Linux）
         self._trim_system_memory()
@@ -386,72 +389,6 @@ class ClearMemoryDeepNode:
         logger.info(f"[ClearMemory] 已清理 {cleared_count} 个大对象, 释放约 {freed_memory:.2f}G")
         return {'count': cleared_count, 'memory': freed_memory}
     
-    def _clear_python_internal_caches(self):
-        """清理 Python 内部缓存"""
-        cleared_count = 0
-        
-        try:
-            # 1. 清理 sys.modules 中未使用的模块（谨慎操作）
-            # 不清理核心模块和当前使用的模块
-            core_modules = {'sys', 'os', 'gc', 'torch', 'builtins', '__main__'}
-            modules_to_keep = set()
-            
-            # 保留ComfyUI相关模块
-            for name in list(sys.modules.keys()):
-                if any(x in name.lower() for x in ['comfy', 'torch', 'cuda', '__']):
-                    modules_to_keep.add(name)
-            
-            # 清理缓存模块
-            modules_to_remove = []
-            for name in list(sys.modules.keys()):
-                if name not in core_modules and name not in modules_to_keep:
-                    # 跳过正在使用的模块
-                    if not name.startswith('_') and '.' not in name:
-                        continue
-                    modules_to_remove.append(name)
-            
-            # 实际删除（注释掉，太危险）
-            # for name in modules_to_remove[:50]:  # 限制数量
-            #     try:
-            #         del sys.modules[name]
-            #         cleared_count += 1
-            #     except:
-            #         pass
-            
-            # 2. 清理 __pycache__
-            # 这个在运行时不太有效，跳过
-            
-            # 3. 清理 warnings 缓存
-            try:
-                import warnings
-                warnings.filters.clear()
-                cleared_count += 1
-            except:
-                pass
-            
-            # 4. 清理 importlib 缓存
-            try:
-                import importlib
-                if hasattr(importlib, 'invalidate_caches'):
-                    importlib.invalidate_caches()
-                    cleared_count += 1
-            except:
-                pass
-            
-            # 5. 清理 urllib 缓存
-            try:
-                import urllib.request
-                urllib.request.urlcleanup()
-                cleared_count += 1
-            except:
-                pass
-                
-        except Exception as e:
-            logger.warning(f"⚠️ Python内部缓存清理异常: {e}")
-        
-        logger.info(f"[ClearMemory] 已清理 {cleared_count} 个Python内部缓存")
-        return cleared_count
-    
     def _trim_system_memory(self):
         """系统级内存trim（容器友好版本）"""
         freed_cache = False
@@ -679,7 +616,7 @@ class ClearMemoryDeepNode:
         return 0
     
     def _clear_global_caches(self):
-        """清理Python全局缓存和大对象（安全版）"""
+        """清理Python全局缓存（安全简化版）"""
         cleared_count = 0
         
         # 1. 强制清理系统 buff/cache
@@ -690,24 +627,11 @@ class ClearMemoryDeepNode:
         except:
             pass
         
-        # 1. 清理functools缓存
-        try:
-            import functools
-            # 清理lru_cache缓存
-            for obj in gc.get_objects():
-                try:
-                    if hasattr(obj, 'cache_clear') and callable(obj.cache_clear):
-                        obj.cache_clear()
-                        cleared_count += 1
-                except:
-                    pass
-        except:
-            pass
-        
-        # 2. 清理torch内部缓存
+        # 2. 清理 torch 内部缓存
         try:
             if hasattr(torch, '_C') and hasattr(torch._C, '_clear_cublas_benchmarks'):
                 torch._C._clear_cublas_benchmarks()
+                cleared_count += 1
         except:
             pass
         
