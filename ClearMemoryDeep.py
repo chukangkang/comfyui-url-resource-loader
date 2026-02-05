@@ -1,19 +1,5 @@
 import os
 import sys
-from types import ModuleType
-
-# 完全阻止 kornia 加载，避免 basicsr 提示
-class _FakeKornia(ModuleType):
-    def __init__(self):
-        super().__init__('kornia')
-    def __getattr__(self, name):
-        return _FakeKornia()
-
-if 'kornia' not in sys.modules:
-    sys.modules['kornia'] = _FakeKornia()
-    sys.modules['kornia.config'] = _FakeKornia()
-    sys.modules['kornia.lazyloader'] = _FakeKornia()
-
 import torch
 import gc
 import psutil
