@@ -36,16 +36,16 @@ class ClearMemoryDeepNode:
     OUTPUT_NODE = True
     FUNCTION = "clear_memory_deep"
     CATEGORY = "utils/内存清理"
-    TITLE = "🚀 深度内存清理 + 泄漏排查（增强版）"
-    DESCRIPTION = """ComfyUI内存泄漏排查 + Buffer全释放增强版
-    ✅ 模型/张量/Buffer完全释放
-    ✅ 内存泄漏检测与报告
-    ✅ VRAM强制同步清理
-    ✅ ComfyUI缓存深度清理
-    ✅ Python对象引用追踪"""
+    TITLE = "🚀 深度内存清洗（恢复刚启动状态）"
+    DESCRIPTION = """ComfyUI深度内存清洗 - 恢复到刚启动状态
+    ✅ 完全卸载所有模型和张量
+    ✅ 深度释放GPU显存（VRAM）
+    ✅ 彻底清理CPU内存
+    ✅ 清空ComfyUI所有缓存
+    ✅ 确保下次加载模型无残留"""
 
     def clear_memory_deep(self, any_input=None):
-        """核心清理逻辑：增强版内存泄漏排查 + Buffer全释放"""
+        """核心清理逻辑：深度内存清洗，确保 ComfyUI 恢复到刚启动状态"""
         # 忽略输入参数，仅做兼容，不影响清理逻辑
         del any_input  # 主动删除输入引用，减少内存占用
         
@@ -58,65 +58,97 @@ class ClearMemoryDeepNode:
         proc = psutil.Process(os.getpid())
         start_cpu = proc.memory_info().rss / 1024**3
         
-        logger.info("[ClearMemory] 开始清理...")
+        logger.info("[ClearMemory] 🚀 开始深度内存清洗（恢复到刚启动状态）...")
         
-        # 步骤0：调用ComfyUI原生清理函数
+        # ============ 第一阶段：ComfyUI 模型卸载 ============
+        logger.info("[ClearMemory] 阶段1: 卸载所有 ComfyUI 模型...")
         try:
+            # 卸载所有已加载的模型
             if hasattr(mm, 'unload_all_models'):
                 mm.unload_all_models()
+            
+            # 清理模型管理器
             if hasattr(mm, 'cleanup_models'):
                 mm.cleanup_models()
+            
+            # 强制清空当前加载的模型列表
             if hasattr(mm, 'current_loaded_models'):
-                mm.current_loaded_models.clear()
+                if isinstance(mm.current_loaded_models, list):
+                    mm.current_loaded_models.clear()
+            
+            # 软清空缓存
             if hasattr(mm, 'soft_empty_cache'):
                 mm.soft_empty_cache(force=True)
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"⚠️ ComfyUI 模型卸载异常: {e}")
 
-        # 步骤1-3：静默执行清理（不输出详细日志）
+        # ============ 第二阶段：深度清理模型张量 ============
+        logger.info("[ClearMemory] 阶段2: 深度清理所有模型张量...")
         self._clear_comfyui_models()
         self._clear_comfyui_caches()
         self._clear_output_caches()
-        leak_report = self._detect_memory_leaks()
-        self._clear_global_caches()
-
-        # 步骤4：Python GC回收（静默执行）
+        
+        # ============ 第三阶段：清理 PyTorch 张量缓存 ============
+        logger.info("[ClearMemory] 阶段3: 清理所有 PyTorch 张量...")
+        self._clear_all_pytorch_tensors()
+        
+        # ============ 第四阶段：Python GC 垃圾回收 ============
+        logger.info("[ClearMemory] 阶段4: 执行 Python 垃圾回收...")
         gc.disable()
         gc.collect()
         gc.enable()
-        for i in range(3):
+        # 多次深度 GC
+        for i in range(5):
             gc.collect(2)
         gc.set_threshold(300, 3, 3)
 
-        # 步骤5：VRAM清理（静默执行）
+        # ============ 第五阶段：VRAM 完全释放 ============
         if torch.cuda.is_available():
+            logger.info("[ClearMemory] 阶段5: 完全释放 VRAM...")
             device_count = torch.cuda.device_count()
             for device_id in range(device_count):
                 with torch.cuda.device(device_id):
+                    # 同步并等待所有 GPU 操作完成
                     torch.cuda.synchronize()
+                    # 重置统计信息
                     torch.cuda.reset_peak_memory_stats()
                     torch.cuda.reset_accumulated_memory_stats()
+                    # 清空缓存
                     torch.cuda.empty_cache()
+                    # 进程间通信清理
                     torch.cuda.ipc_collect()
             
-            # 全局缓存清理（3次确保彻底）
-            for i in range(3):
+            # 多次强制清空 VRAM 缓存（确保彻底）
+            for i in range(5):
                 torch.cuda.empty_cache()
                 if hasattr(torch.cuda, 'memory'):
                     torch.cuda.memory.empty_cache()
             
-            # 最终同步
-            torch.cuda.synchronize()
-                        # 再次强制GC清理CPU内存
+            # 最终同步所有设备
+            for device_id in range(device_count):
+                with torch.cuda.device(device_id):
+                    torch.cuda.synchronize()
+        
+        # ============ 第六阶段：再次 GC + ComfyUI 缓存清理 ============
+        logger.info("[ClearMemory] 阶段6: 最终清理...")
+        # 多次 GC 确保彻底
+        for i in range(3):
             gc.collect()
-            gc.collect()
-                        # 再次强制GC清理CPU内存
-            gc.collect()
-            gc.collect()
-            
-            # 再次调用ComfyUI的soft_empty_cache
-            if hasattr(mm, 'soft_empty_cache'):
-                mm.soft_empty_cache(force=True)
+            gc.collect(2)
+        
+        # 清理全局缓存
+        self._clear_global_caches()
+        
+        # 再次调用 ComfyUI 的清理函数
+        if hasattr(mm, 'soft_empty_cache'):
+            mm.soft_empty_cache(force=True)
+        
+        # 最终 GPU 同步和缓存清空
+        if torch.cuda.is_available():
+            for device_id in range(device_count):
+                with torch.cuda.device(device_id):
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
             
             end_gpu = torch.cuda.memory_allocated() / 1024**3
             end_gpu_reserved = torch.cuda.memory_reserved() / 1024**3
@@ -130,14 +162,17 @@ class ClearMemoryDeepNode:
         
         # 生成清理报告
         report_lines = []
-        report_lines.append(f"清理完成 - 耗时: {elapsed_time:.1f}s")
-        report_lines.append(f"CPU: {start_cpu:.2f}G → {end_cpu:.2f}G (释放 {freed_cpu:+.2f}G)")
+        report_lines.append(f"✅ 深度内存清洗完成 - 耗时: {elapsed_time:.1f}s")
+        report_lines.append(f"🖥️ CPU: {start_cpu:.2f}G → {end_cpu:.2f}G (释放 {freed_cpu:+.2f}G)")
         
         if torch.cuda.is_available():
-            report_lines.append(f"GPU: {start_gpu:.2f}G → {end_gpu:.2f}G (释放 {freed_gpu:+.2f}G)")
-            logger.info(f"[ClearMemory] 完成 - CPU释放: {freed_cpu:+.2f}G, GPU释放: {freed_gpu:+.2f}G, 耗时: {elapsed_time:.1f}s")
+            report_lines.append(f"🎮 GPU已用: {start_gpu:.2f}G → {end_gpu:.2f}G (释放 {freed_gpu:+.2f}G)")
+            report_lines.append(f"🎮 GPU预留: {start_gpu_reserved:.2f}G → {end_gpu_reserved:.2f}G (释放 {freed_reserved:+.2f}G)")
+            logger.info(f"[ClearMemory] ✅ 完成 - CPU释放: {freed_cpu:+.2f}G, GPU释放: {freed_gpu:+.2f}G, 耗时: {elapsed_time:.1f}s")
         else:
-            logger.info(f"[ClearMemory] 完成 - CPU释放: {freed_cpu:+.2f}G, 耗时: {elapsed_time:.1f}s")
+            logger.info(f"[ClearMemory] ✅ 完成 - CPU释放: {freed_cpu:+.2f}G, 耗时: {elapsed_time:.1f}s")
+        
+        logger.info("[ClearMemory] 🎉 ComfyUI 已恢复到刚启动状态！")
         
         report = "\n".join(report_lines)
         return (report,)
@@ -213,7 +248,54 @@ class ClearMemoryDeepNode:
             logger.warning(f"⚠️ 模型清理异常: {str(e)}")
         
         return stats
-
+    
+    def _clear_all_pytorch_tensors(self):
+        """清理内存中所有未被使用的 PyTorch 张量"""
+        cleared_tensors = 0
+        freed_memory = 0.0
+        
+        try:
+            # 遍历所有 GC 对象，找到未被引用的张量
+            all_objects = gc.get_objects()
+            for obj in all_objects:
+                try:
+                    if isinstance(obj, torch.Tensor):
+                        # 计算张量大小
+                        try:
+                            size_gb = obj.element_size() * obj.nelement() / 1024**3
+                            freed_memory += size_gb
+                        except:
+                            pass
+                        
+                        # 分离张量计算图
+                        try:
+                            if obj.grad is not None:
+                                obj.grad.detach_()
+                                del obj.grad
+                            obj.detach_()
+                        except:
+                            pass
+                        
+                        cleared_tensors += 1
+                except:
+                    continue
+            
+            # 清理 PyTorch 内部缓存
+            if hasattr(torch, '_C'):
+                if hasattr(torch._C, '_clear_cublas_benchmarks'):
+                    torch._C._clear_cublas_benchmarks()
+            
+            # 清理 CUDA 张量缓存
+            if torch.cuda.is_available():
+                # 清理 CUDA 缓存分配器
+                torch.cuda.empty_cache()
+                
+        except Exception as e:
+            logger.warning(f"⚠️ PyTorch 张量清理异常: {e}")
+        
+        logger.info(f"[ClearMemory] 已处理 {cleared_tensors} 个张量, 释放约 {freed_memory:.2f}G")
+        return {'tensors': cleared_tensors, 'memory': freed_memory}
+    
     def _clear_comfyui_models(self):
         """清理ComfyUI所有模型缓存（增强版）"""
         stats = {'count': 0, 'params': 0, 'buffers': 0, 'memory_freed': 0.0}

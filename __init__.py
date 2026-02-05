@@ -15,8 +15,6 @@ from .LoadImageFromURL import LoadImageFromURL
 from .LoadVideoFromURL import ComfyVideoURLLoader
 # 音频URL加载节点（LoadAudioFromURL）
 from .LoadAudioFromURL import LoadAudioFromURL
-# OSS上传节点（OSS_Upload）
-from .oss_uploader import OSS_Upload
 # 内存清理节点（ClearMemoryDeep）
 from .ClearMemoryDeep import ClearMemoryDeepNode
 
@@ -27,7 +25,6 @@ NODE_CLASS_MAPPINGS = {
     "LoadImageFromURL": LoadImageFromURL,
     "ComfyVideoURLLoader": ComfyVideoURLLoader,
     "LoadAudioFromURL": LoadAudioFromURL,
-    "OSS_Upload": OSS_Upload,
     "ClearMemoryDeepEnd": ClearMemoryDeepNode
 }
 
@@ -35,8 +32,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadImageFromURL": "🔌 Load Image From URL",
     "ComfyVideoURLLoader": "🔌 Load Video From URL",
     "LoadAudioFromURL": "🔌 Load Audio From URL",
-    "OSS_Upload": "🔌 Upload to OSS",
-    "ClearMemoryDeepEnd": "🔄 深度内存清理（可介入/末尾执行）"
+    "ClearMemoryDeepEnd": "� 深度内存清洗（恢复刚启动状态）"
 }
 
 # ---------------------------
@@ -49,7 +45,6 @@ class URLLoaderExtension(ComfyExtension):
             LoadImageFromURL,
             ComfyVideoURLLoader,
             LoadAudioFromURL,
-            OSS_Upload,
             ClearMemoryDeepNode
         ]
 
@@ -57,7 +52,7 @@ class URLLoaderExtension(ComfyExtension):
 # ComfyUI扩展标准入口函数（唯一入口）
 # ---------------------------
 async def comfy_entrypoint() -> URLLoaderExtension:
-    print("[URLLoaderExtension] Image/Video/Audio URL Loader + OSS Upload + Memory Cleaner loaded successfully!")
+    print("[URLLoaderExtension] Image/Video/Audio URL Loader + Memory Cleaner loaded successfully!")
     return URLLoaderExtension()
 
 # ---------------------------
@@ -70,6 +65,6 @@ __all__ = [
 ]
 
 # 可选：添加节点版本信息
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __author__ = "chukangkang"
-__description__ = "URL资源加载器（支持图片/音频/视频） + OSS上传 + 深度内存清理"
+__description__ = "URL资源加载器（支持图片/音频/视频） + 深度内存清理"
