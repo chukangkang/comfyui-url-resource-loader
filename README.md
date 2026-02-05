@@ -10,7 +10,7 @@
 - **Load Audio From URL** - 从URL加载音频资源
 
 ### 🚀 内存管理节点
-- **深度内存清洗（恢复刚启动状态）** - 完全卸载所有模型和张量，彻底释放 CPU/GPU 内存
+- **深度内存清洗（激进+buff/cache）** - 8阶段终极清洗，完全卸载所有模型和张量，彻底释放 CPU/GPU 内存，清理系统 buff/cache
 
 ## 安装步骤
 
@@ -27,8 +27,6 @@ git clone https://github.com/chukangkang/comfui-url-resource-loader.git
 cd comfui-url-resource-loader
 pip install -r requirements.txt
 ```
-
-**重要提示：** 如果遇到 kornia 提示安装 basicsr 依赖，请选择 `[N]o` 或 `[A]ll`（自动处理）。本插件已配置自动跳过 basicsr 安装（torch 2.8.0 与 basicsr 不兼容）。
 
 ### 3. 重启ComfyUI
 重启ComfyUI应用，新节点将自动加载
