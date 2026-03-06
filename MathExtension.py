@@ -12,7 +12,8 @@ class MathTernary:
             "required": {
                 "a": ("INT,FLOAT", {"default": 0}),
                 "b": ("INT,FLOAT", {"default": 0}),
-                "condition": ("STRING", {"default": "a > b ? a : b", "multiline": False}),
+                "c": ("INT,FLOAT", {"default": 0}),
+                "condition": ("STRING", {"default": "a > b ? a + c : b + c", "multiline": False}),
             }
         }
     
@@ -21,7 +22,7 @@ class MathTernary:
     FUNCTION = "execute"
     CATEGORY = "utils/math"
     
-    def execute(self, a, b, condition):
+    def execute(self, a, b, c, condition):
         try:
             # 支持三目运算符格式: condition ? value_if_true : value_if_false
             # 例如: a > b ? 1080 : round(1080*a/b)
@@ -34,6 +35,7 @@ class MathTernary:
             eval_globals = {
                 "a": a,
                 "b": b,
+                "c": c,
                 "round": round,
                 "abs": abs,
                 "min": min,
