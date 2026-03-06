@@ -19,7 +19,7 @@ from .LoadAudioFromURL import LoadAudioFromURL
 # 内存清理节点（ClearMemoryDeep）
 from .ClearMemoryDeep import ClearMemoryDeepNode
 # Math扩展节点（三目运算、round函数）
-from .MathExtension import MathTernary, MathRound
+from .MathExtensions import MathTernary, MathRound
 
 # ---------------------------
 # 传统节点映射（兼容旧版ComfyUI）
