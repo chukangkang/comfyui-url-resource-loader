@@ -62,15 +62,3 @@ class MathTernary:
             return (int(result), float(result))
         except Exception as e:
             raise ValueError(f"Condition evaluation error: {str(e)}")
-
-
-# 节点映射
-NODE_CLASS_MAPPINGS = {
-    "MathTernary": MathTernary,
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "MathTernary": "🔢 三目运算",
-}
-
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
