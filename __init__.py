@@ -18,8 +18,8 @@ from .LoadVideoFromURL import ComfyVideoURLLoader
 from .LoadAudioFromURL import LoadAudioFromURL
 # 内存清理节点（ClearMemoryDeep）
 from .ClearMemoryDeep import ClearMemoryDeepNode
-# Math扩展节点（三目运算、round函数）
-from .MathExtensions import MathTernary, MathRound
+# Math扩展节点（三目运算）
+from .MathExtensions import MathTernary
 
 # ---------------------------
 # 传统节点映射（兼容旧版ComfyUI）
@@ -30,7 +30,6 @@ NODE_CLASS_MAPPINGS = {
     "LoadAudioFromURL": LoadAudioFromURL,
     "ClearMemoryDeepEnd": ClearMemoryDeepNode,
     "MathTernary": MathTernary,
-    "MathRound": MathRound,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -39,7 +38,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadAudioFromURL": "🔌 Load Audio From URL",
     "ClearMemoryDeepEnd": "🚀 深度内存清洗（容器优化）",
     "MathTernary": "🔢 三目运算",
-    "MathRound": "🔢 四舍五入",
 }
 
 # ---------------------------
@@ -54,7 +52,6 @@ class URLLoaderExtension(ComfyExtension):
             LoadAudioFromURL,
             ClearMemoryDeepNode,
             MathTernary,
-            MathRound,
         ]
 
 # ---------------------------
